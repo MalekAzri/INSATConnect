@@ -1,14 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Date } from './entities/date.entity';
+import { AcademicDate } from './entities/academic-date.entity';
 import { SetDatesDto } from './dto/set-date.dto';
 
 @Injectable()
 export class DatesService {
   constructor(
-    @InjectRepository(Date)
-    private readonly repo: Repository<Date>,
+    @InjectRepository(AcademicDate)
+    private readonly repo: Repository<AcademicDate>,
   ) {}
 
   async setDates(dto: SetDatesDto): Promise<void> {
@@ -31,7 +31,7 @@ export class DatesService {
     }
   }
 
-  async getAllDates(): Promise<Date[]> {
+  async getAllDates(): Promise<AcademicDate[]> {
     return this.repo.find();
   }
 }

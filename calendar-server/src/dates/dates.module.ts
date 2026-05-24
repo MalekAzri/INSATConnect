@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Date } from './entities/date.entity';
+import { AcademicDate } from './entities/academic-date.entity';
 import { DatesService } from './dates.service';
 import { DatesController } from './dates.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Date])],
+  imports: [TypeOrmModule.forFeature([AcademicDate])],
   providers: [DatesService],
   controllers: [DatesController],
   exports: [DatesService],

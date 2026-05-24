@@ -1,7 +1,7 @@
 import { Entity, Column, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
 @Entity()
-export class Date {
+export class AcademicDate {
   @PrimaryGeneratedColumn()
   id!: number;
 
