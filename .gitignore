@@ -1,0 +1,3 @@
+calendar-server/.env
+calendar-server/dist/
+calendar-server/node_modules/
