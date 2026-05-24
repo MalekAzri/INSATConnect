@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 
 export default function Home() {
-  const { user } = useUser();
+  const { user, logout } = useUser();
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#F9FBFC] text-slate-800">
@@ -33,14 +33,14 @@ export default function Home() {
       {/* Header / Navbar */}
       <header className="sticky top-0 z-50 w-full border-b border-slate-100/40 bg-white/70 backdrop-blur-md transition-all">
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-8">
-          <div className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2 cursor-pointer">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/20">
               <span className="text-lg font-black tracking-tighter">iC</span>
             </div>
             <span className="text-xl font-bold tracking-tight text-slate-800">
               INSAT<span className="text-blue-600"> Connect</span>
             </span>
-          </div>
+          </Link>
 
           <nav className="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-600">
             <a href="#services" className="hover:text-blue-600 transition-colors">Espaces</a>
@@ -51,27 +51,28 @@ export default function Home() {
 
           <div className="flex items-center gap-4">
             {user.isLoggedIn ? (
-              <Link
-                href="/dashboard/student"
-                className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-500/10 hover:bg-blue-700 hover:shadow-blue-500/20 transition-all cursor-pointer"
-              >
-                Mon Espace ({user.role === "student" ? user.year : "Admin"}) <ArrowRight className="h-4 w-4" />
-              </Link>
-            ) : (
-              <>
+              <div className="flex items-center gap-3">
                 <Link
-                  href="/login"
-                  className="text-sm font-bold text-slate-700 hover:text-blue-600 transition-colors"
-                >
-                  Connexion
-                </Link>
-                <Link
-                  href="/login"
+                  href={user.role === "admin" ? "/dashboard/admin" : user.role === "teacher" ? "/dashboard/teacher" : "/dashboard/student"}
                   className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-500/10 hover:bg-blue-700 hover:shadow-blue-500/20 transition-all cursor-pointer"
                 >
-                  Accès Portail <ArrowRight className="h-4 w-4" />
+                  <Users className="h-4 w-4" />
+                  Mon Espace ({user.role === "student" ? user.year : user.role === "teacher" ? "Enseignant" : "Admin"}) <ArrowRight className="h-4 w-4" />
                 </Link>
-              </>
+                <button
+                  onClick={() => logout()}
+                  className="text-sm font-bold text-slate-500 hover:text-red-600 transition-colors"
+                >
+                  Log out
+                </button>
+              </div>
+            ) : (
+              <Link
+                href="/login"
+                className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-500/10 hover:bg-blue-700 hover:shadow-blue-500/20 transition-all cursor-pointer"
+              >
+                Connexion <ArrowRight className="h-4 w-4" />
+              </Link>
             )}
           </div>
         </div>
@@ -101,7 +102,7 @@ export default function Home() {
               {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
                 <Link
-                  href="/login"
+                  href={user.isLoggedIn ? (user.role === "admin" ? "/dashboard/admin" : user.role === "teacher" ? "/dashboard/teacher" : "/dashboard/student") : "/login"}
                   className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-8 py-4 text-base font-bold text-white shadow-xl shadow-blue-500/20 hover:bg-blue-700 hover:shadow-blue-500/30 transition-all hover:scale-[1.02] cursor-pointer"
                 >
                   Découvrir mon espace <ArrowRight className="h-5 w-5" />
@@ -245,7 +246,7 @@ export default function Home() {
                   </li>
                 </ul>
               </div>
-              <Link href="/login" className="inline-flex items-center gap-2 text-sm font-bold text-teal-600 hover:text-teal-700">
+              <Link href="/dashboard/teacher" className="inline-flex items-center gap-2 text-sm font-bold text-teal-600 hover:text-teal-700">
                 Accéder au portail Prof <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
@@ -439,14 +440,14 @@ export default function Home() {
       {/* FOOTER */}
       <footer className="bg-slate-900 text-white py-12 px-6 lg:px-8 border-t border-slate-800">
         <div className="mx-auto max-w-7xl flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2 cursor-pointer">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white font-black tracking-tighter">
               iC
             </div>
             <span className="text-xl font-bold tracking-tight text-white">
               INSAT<span className="text-blue-400"> Connect</span>
             </span>
-          </div>
+          </Link>
 
           <p className="text-xs text-slate-400 font-medium text-center md:text-left">
             © {new Date().getFullYear()} INSAT Connect. Fait pour l'Institut National des Sciences Appliquées et de Technologie de Tunis. Tous droits réservés.

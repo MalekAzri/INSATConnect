@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useUser, UserRole } from "@/context/UserContext";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import CalendarGrid, { CalendarEvent } from "@/components/Calendar";
 import { 
   Bell, 
   Menu, 
@@ -100,14 +102,12 @@ export default function StudentDashboard() {
   const [isAdminTyping, setIsAdminTyping] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-login fallback if user directly lands on dashboard without being authenticated
+  // Redirect to login if user directly lands on dashboard without being authenticated
   useEffect(() => {
     if (!user.isLoggedIn) {
-      // Simulate auto log in as default student for demo
-      login("student", "GL3", "Malek Ben Ali");
-      showToast("Connexion automatique en tant que Malek Ben Ali (GL3)");
+      router.push("/login");
     }
-  }, [user.isLoggedIn, login]);
+  }, [user.isLoggedIn, router]);
 
   // Scroll to bottom of chat when messages change
   useEffect(() => {
@@ -522,14 +522,14 @@ export default function StudentDashboard() {
       <aside className="hidden lg:flex w-72 flex-col bg-white border-r border-slate-100 shrink-0">
         
         {/* Sidebar Header Brand */}
-        <div className="flex h-20 items-center gap-2 px-6 border-b border-slate-100">
+        <Link href="/" className="flex h-20 items-center gap-2 px-6 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white font-black tracking-tighter shadow-md shadow-blue-500/10">
             iC
           </div>
           <span className="text-lg font-bold tracking-tight text-slate-800">
             INSAT<span className="text-blue-600"> Connect</span>
           </span>
-        </div>
+        </Link>
 
         {/* Student Mini Card */}
         <div className="p-5 border-b border-slate-100 bg-[#F9FBFC]/50 space-y-3">
@@ -1169,78 +1169,14 @@ export default function StudentDashboard() {
             {activeTab === "calendar" && (
               <div className="space-y-6">
                 
-                {/* Calendar listing */}
-                <div className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden">
-                  <div className="p-5 bg-slate-50/50 border-b border-slate-100 flex items-center justify-between">
-                    <span className="text-xs font-extrabold text-slate-700">Chronologie Académique - Devoirs Surveillés & Examens</span>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase">INSAT Tunis</span>
-                  </div>
-                  <div className="p-6">
-                    {/* Calendar Controls */}
-                    <div className="flex items-center justify-between mb-6">
-                      <h3 className="text-lg font-extrabold text-slate-800">Mai 2026</h3>
-                      <div className="flex items-center gap-2">
-                        <button className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-500 transition-colors">
-                          <span className="sr-only">Mois précédent</span>
-                          &larr;
-                        </button>
-                        <button className="px-4 py-2 bg-slate-100 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-colors">Aujourd'hui</button>
-                        <button className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-500 transition-colors">
-                          <span className="sr-only">Mois suivant</span>
-                          &rarr;
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Calendar Grid */}
-                    <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white">
-                      {/* Days Header */}
-                      <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
-                        {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(day => (
-                          <div key={day} className="p-3 text-center text-[10px] font-extrabold uppercase text-slate-500 border-r border-slate-200 last:border-r-0">
-                            {day}
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Calendar Body (Mocking May 2026) */}
-                      <div className="grid grid-cols-7 grid-rows-5 bg-slate-100 gap-[1px]">
-                        {/* We generate 35 days (5 weeks) */}
-                        {Array.from({ length: 35 }).map((_, i) => {
-                          // May 2026 starts on a Friday (index 4)
-                          const dayNumber = i - 3;
-                          const isCurrentMonth = dayNumber > 0 && dayNumber <= 31;
-                          
-                          // Mocking some events on specific days
-                          let events = [];
-                          if (dayNumber === 15) events.push({ type: 'exam', title: 'DS1' });
-                          if (dayNumber === 18) events.push({ type: 'deadline', title: 'Rendu Projet' });
-                          if (dayNumber === 23) events.push({ type: 'vacation', title: 'Arrêt S2' });
-
-                          return (
-                            <div key={i} className={`min-h-[80px] p-2 bg-white flex flex-col ${isCurrentMonth ? '' : 'bg-slate-50 opacity-50'}`}>
-                              <span className={`text-xs font-bold ${isCurrentMonth ? 'text-slate-700' : 'text-slate-400'} ${dayNumber === 10 ? 'bg-blue-600 text-white w-6 h-6 flex items-center justify-center rounded-full' : ''}`}>
-                                {dayNumber > 0 && dayNumber <= 31 ? dayNumber : (dayNumber <= 0 ? 30 + dayNumber : dayNumber - 31)}
-                              </span>
-                              
-                              <div className="mt-auto space-y-1">
-                                {events.map((evt, idx) => (
-                                  <div key={idx} className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md truncate ${
-                                    evt.type === 'exam' ? 'bg-red-50 text-red-600 border border-red-100' :
-                                    evt.type === 'deadline' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
-                                    'bg-slate-100 text-slate-600 border border-slate-200'
-                                  }`}>
-                                    {evt.title}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <CalendarGrid 
+                  title="Chronologie Académique - Devoirs Surveillés & Examens"
+                  events={[
+                    { dayNumber: 15, type: 'exam', title: 'DS1' },
+                    { dayNumber: 18, type: 'deadline', title: 'Rendu Projet' },
+                    { dayNumber: 23, type: 'vacation', title: 'Arrêt S2' },
+                  ]}
+                />
 
                 {/* Upcoming Events List */}
                 <div className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden p-6">

@@ -51,10 +51,10 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     let email = "student@insat.u-cartago.tn";
     
     if (role === "teacher") {
-      defaultName = "Dr. Mohamed Slim";
+      defaultName = name || "Dr. Mohamed Slim";
       email = "m.slim@insat.u-cartago.tn";
     } else if (role === "admin") {
-      defaultName = "Mme. Sonia (Scolarité)";
+      defaultName = name || "Mme. Sonia (Scolarité)";
       email = "sonia.admin@insat.u-cartago.tn";
     } else if (name) {
       defaultName = name;
