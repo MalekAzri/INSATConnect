@@ -1,34 +1,21 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Body, Controller, Get, Post } from '@nestjs/common';
 import { DatesService } from './dates.service';
-import { CreateDateDto } from './dto/create-date.dto';
-import { UpdateDateDto } from './dto/update-date.dto';
+import { SetDatesDto } from './dto/set-date.dto';
 
 @Controller('dates')
 export class DatesController {
   constructor(private readonly datesService: DatesService) {}
 
+  // Le serveur principal appelle cette route pour configurer les dates
   @Post()
-  create(@Body() createDateDto: CreateDateDto) {
-    return this.datesService.create(createDateDto);
+  async setDates(@Body() dto: SetDatesDto) {
+    await this.datesService.setDates(dto);
+    return { message: 'Dates académiques enregistrées avec succès' };
   }
 
+  // Route utilitaire pour vérifier les dates enregistrées
   @Get()
-  findAll() {
-    return this.datesService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.datesService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateDateDto: UpdateDateDto) {
-    return this.datesService.update(+id, updateDateDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.datesService.remove(+id);
+  async getDates() {
+    return this.datesService.getAllDates();
   }
 }

@@ -1,26 +1,37 @@
 import { Injectable } from '@nestjs/common';
-import { CreateDateDto } from './dto/create-date.dto';
-import { UpdateDateDto } from './dto/update-date.dto';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Date } from './entities/date.entity';
+import { SetDatesDto } from './dto/set-date.dto';
 
 @Injectable()
 export class DatesService {
-  create(createDateDto: CreateDateDto) {
-    return 'This action adds a new date';
+  constructor(
+    @InjectRepository(Date)
+    private readonly repo: Repository<Date>,
+  ) {}
+
+  async setDates(dto: SetDatesDto): Promise<void> {
+    // Les 7 dates avec leur rôle cible
+    const entries = [
+      { key: 'ds_remise',       date: dto.dsRemise,       targetRole: 'Professeur' },
+      { key: 'exam_remise',     date: dto.examRemise,     targetRole: 'Professeur' },
+      { key: 'ds_affichage',     date: dto.dsAffichage,          targetRole: 'admin'   },
+      { key: 'exam_affichage ',    date: dto.examAffichage,        targetRole: 'admin'   },
+      { key: 'sem1_deliberation',   date: dto.sem1Deliberation,   targetRole: 'admin'   },
+      { key: 'sem2_deliberation',   date: dto.sem2Deliberation,   targetRole: 'admin'   },
+      { key: 'final_deliberation',  date: dto.DeliberationFinale,  targetRole: 'admin'   },
+    ];
+
+    for (const entry of entries) {
+      await this.repo.upsert(
+        { ...entry, notificationSent: false },
+        { conflictPaths: ['key'] },
+      );
+    }
   }
 
-  findAll() {
-    return `This action returns all dates`;
-  }
-
-  findOne(id: number) {
-    return `This action returns a #${id} date`;
-  }
-
-  update(id: number, updateDateDto: UpdateDateDto) {
-    return `This action updates a #${id} date`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} date`;
+  async getAllDates(): Promise<Date[]> {
+    return this.repo.find();
   }
 }
