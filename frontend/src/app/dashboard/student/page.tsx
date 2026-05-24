@@ -5,6 +5,7 @@ import { useUser, UserRole } from "@/context/UserContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CalendarGrid, { CalendarEvent } from "@/components/Calendar";
+import { useChat } from "@/hooks/useChat";
 import { 
   Bell, 
   Menu, 
@@ -89,17 +90,13 @@ export default function StudentDashboard() {
   const [homeworkStatus, setHomeworkStatus] = useState<{ [roomId: string]: boolean }>({});
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   
-  // Chat States
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    {
-      id: "1",
-      sender: "admin",
-      content: "Bonjour Malek ! Je suis l'agent de permanence du service scolarité de l'INSAT. Comment puis-je vous aider aujourd'hui ?",
-      time: "15:30"
-    }
-  ]);
+  // Chat States - connected to real backend
+  const ADMIN_USER_ID = 1; // Simulated admin ID
+  const { messages: chatMessages, sendMessage: sendChatMessage, isConnected: isChatConnected, isLoading: isChatLoading } = useChat({
+    userId: user.id,
+    otherUserId: ADMIN_USER_ID,
+  });
   const [typedMessage, setTypedMessage] = useState("");
-  const [isAdminTyping, setIsAdminTyping] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Redirect to login if user directly lands on dashboard without being authenticated
@@ -114,7 +111,7 @@ export default function StudentDashboard() {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [chatMessages, isAdminTyping]);
+  }, [chatMessages]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -449,45 +446,12 @@ export default function StudentDashboard() {
     showToast("Votre devoir a été transmis à l'enseignant avec succès !");
   };
 
-  // Chat message send (Simulates a dynamic responsive conversation)
+  // Chat message send - connected to real backend
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!typedMessage || !typedMessage.trim()) return;
-
-    const studentMessage: ChatMessage = {
-      id: Date.now().toString(),
-      sender: "student",
-      content: typedMessage,
-      time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
-    };
-
-    setChatMessages(prev => [...prev, studentMessage]);
-    const studentQuery = typedMessage.toLowerCase();
+    if (!typedMessage.trim()) return;
+    sendChatMessage(ADMIN_USER_ID, typedMessage.trim());
     setTypedMessage("");
-    setIsAdminTyping(true);
-
-    // Dynamic responses from Mme Sonia based on user questions
-    let adminReplyText = "Bonjour ! J'ai bien reçu votre demande. Je vais étudier cela avec la direction des études de l'INSAT et je vous recontacte au plus vite.";
-    
-    if (studentQuery.includes("relevé") || studentQuery.includes("notes")) {
-      adminReplyText = `Parfait, j'ai vérifié votre profil pour la classe de ${user.year}. Votre relevé de notes officiel du Semestre 1 est déjà signé par la direction. Vous pouvez venir le retirer au guichet n°2 demain matin entre 9h et 12h.`;
-    } else if (studentQuery.includes("emploi") || studentQuery.includes("planning") || studentQuery.includes("temps")) {
-      adminReplyText = `Les emplois du temps définitifs pour le Semestre 2 sont actuellement publiés sur votre flux d'actualités. Pour le groupe ${user.year}, quelques ajustements de salles pour les TP ont été effectués aujourd'hui.`;
-    } else if (studentQuery.includes("fraude") || studentQuery.includes("examen") || studentQuery.includes("conseil")) {
-      adminReplyText = "Concernant les modalités d'examens et la discipline, tous les règlements généraux récents sont téléchargeables sous l'onglet 'Flux d'actualités' dans la section documents.";
-    } else if (studentQuery.includes("inscription") || studentQuery.includes("dossier")) {
-      adminReplyText = "Les fiches d'inscription administrative pour l'année universitaire suivante doivent impérativement être déposées sous format papier avant le 15 juin avec le justificatif de paiement des frais.";
-    }
-
-    setTimeout(() => {
-      setIsAdminTyping(false);
-      setChatMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        sender: "admin",
-        content: adminReplyText,
-        time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
-      }]);
-    }, 2000);
   };
 
   // MOCK DATA: Academic Calendar (DS & Examens)
@@ -881,7 +845,7 @@ export default function StudentDashboard() {
                           <div className="w-10 h-10 rounded-2xl bg-pink-100 text-pink-600 font-bold flex items-center justify-center text-sm shadow-sm">
                             SC
                           </div>
-                          <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-teal-500 border-2 border-white"></span>
+                          <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${isChatConnected ? 'bg-teal-500' : 'bg-slate-300'}`}></span>
                         </div>
                         <div>
                           <div className="text-xs font-extrabold text-slate-800">Service Scolarité</div>
@@ -891,58 +855,58 @@ export default function StudentDashboard() {
                         </div>
                       </div>
                       
-                      <span className="px-2.5 py-1 rounded-full bg-teal-100 text-teal-600 text-[9px] font-extrabold uppercase">
-                        En ligne
+                      <span className={`px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase ${
+                        isChatConnected ? 'bg-teal-100 text-teal-600' : 'bg-slate-100 text-slate-400'
+                      }`}>
+                        {isChatConnected ? 'Connecté' : 'Hors ligne'}
                       </span>
                     </div>
 
                     {/* Messages stream */}
                     <div className="flex-1 p-6 overflow-y-auto space-y-4 bg-slate-50/20">
-                      {chatMessages.map(msg => (
-                        <div
-                          key={msg.id}
-                          className={`flex gap-3 max-w-[85%] ${
-                            msg.sender === "student" ? "ml-auto flex-row-reverse" : "mr-auto"
-                          }`}
-                        >
-                          {/* Avatar */}
-                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
-                            msg.sender === "student" 
-                              ? "bg-blue-600 text-white shadow-md shadow-blue-500/10" 
-                              : "bg-pink-100 text-pink-600"
-                          }`}>
-                            {msg.sender === "student" ? (user.name ? user.name[0] : "M") : "SC"}
-                          </div>
-                          
-                          {/* Message Box */}
-                          <div className="space-y-1">
-                            <div className={`p-4 rounded-2xl text-xs font-semibold leading-relaxed shadow-sm ${
-                              msg.sender === "student"
-                                ? "bg-blue-600 text-white rounded-tr-none"
-                                : "bg-white border border-slate-100 text-slate-700 rounded-tl-none"
-                            }`}>
-                              {msg.content}
-                            </div>
-                            <p className={`text-[8px] text-slate-400 font-semibold ${msg.sender === "student" ? "text-right" : ""}`}>
-                              {msg.time}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-
-                      {/* Typing Indicator */}
-                      {isAdminTyping && (
-                        <div className="flex gap-3 max-w-[85%] mr-auto">
-                          <div className="w-8 h-8 rounded-xl bg-pink-100 text-pink-600 font-bold flex items-center justify-center text-xs shrink-0">
-                            SC
-                          </div>
-                          <div className="bg-white border border-slate-100 rounded-2xl rounded-tl-none p-3.5 flex items-center justify-center gap-1 shadow-sm">
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce"></span>
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce delay-150"></span>
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce delay-300"></span>
-                          </div>
+                      {isChatLoading && (
+                        <div className="text-center text-xs text-slate-400 py-4">Chargement des messages...</div>
+                      )}
+                      {!isChatLoading && chatMessages.length === 0 && (
+                        <div className="text-center text-xs text-slate-400 py-8">
+                          <p className="font-bold">Aucun message pour l&apos;instant.</p>
+                          <p>Posez votre première question à la scolarité !</p>
                         </div>
                       )}
+                      {chatMessages.map(msg => {
+                        const isFromStudent = msg.senderId === user.id;
+                        return (
+                          <div
+                            key={msg.id}
+                            className={`flex gap-3 max-w-[85%] ${
+                              isFromStudent ? "ml-auto flex-row-reverse" : "mr-auto"
+                            }`}
+                          >
+                            {/* Avatar */}
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
+                              isFromStudent
+                                ? "bg-blue-600 text-white shadow-md shadow-blue-500/10"
+                                : "bg-pink-100 text-pink-600"
+                            }`}>
+                              {isFromStudent ? (user.name ? user.name[0] : "M") : "SC"}
+                            </div>
+                            
+                            {/* Message Box */}
+                            <div className="space-y-1">
+                              <div className={`p-4 rounded-2xl text-xs font-semibold leading-relaxed shadow-sm ${
+                                isFromStudent
+                                  ? "bg-blue-600 text-white rounded-tr-none"
+                                  : "bg-white border border-slate-100 text-slate-700 rounded-tl-none"
+                              }`}>
+                                {msg.content}
+                              </div>
+                              <p className={`text-[8px] text-slate-400 font-semibold ${isFromStudent ? "text-right" : ""}`}>
+                                {new Date(msg.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
                       
                       <div ref={chatEndRef} />
                     </div>
@@ -951,15 +915,14 @@ export default function StudentDashboard() {
                     <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-100 bg-white flex gap-3 shrink-0">
                       <input
                         type="text"
-                        disabled={isAdminTyping}
                         placeholder="Posez vos questions à la scolarité (ex: relevé de notes, dossier, circulaires)..."
                         value={typedMessage}
                         onChange={e => setTypedMessage(e.target.value)}
-                        className="flex-1 block rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-xs text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors placeholder-slate-400 disabled:opacity-50"
+                        className="flex-1 block rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-xs text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors placeholder-slate-400"
                       />
                       <button
                         type="submit"
-                        disabled={isAdminTyping || !typedMessage.trim()}
+                        disabled={!typedMessage.trim()}
                         className="px-4 rounded-2xl bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-md shadow-blue-500/10 flex items-center justify-center disabled:bg-blue-400 cursor-pointer"
                       >
                         <SendHorizontal className="h-4.5 w-4.5" />

@@ -5,6 +5,7 @@ import { useUser } from "@/context/UserContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CalendarGrid, { CalendarEvent } from "@/components/Calendar";
+import { useChat, BackendMessage, ConversationSummary } from "@/hooks/useChat";
 import { 
   Bell, 
   Menu, 
@@ -75,77 +76,50 @@ export default function AdminDashboard() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // CHAT STATE
+  // CHAT STATE - connected to real backend
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [chatSearch, setChatSearch] = useState("");
   const [chatInput, setChatInput] = useState("");
-  const [conversations, setConversations] = useState<Conversation[]>([
-    {
-      id: "c1",
-      studentName: "Amira Lahiani",
-      studentClass: "GL3",
-      lastMessage: "Bonjour, j'ai une question sur mon relevé de notes.",
-      time: "09:14",
-      unread: 2,
-      messages: [
-        { id: "m1", sender: "student", text: "Bonjour madame, j'ai une question sur mon relevé de notes.", time: "09:12" },
-        { id: "m2", sender: "student", text: "Est-ce que je peux avoir une attestation de scolarité ?", time: "09:14" }
-      ]
-    },
-    {
-      id: "c2",
-      studentName: "Mohamed Abdelwahed",
-      studentClass: "IIA2",
-      lastMessage: "Ma carte étudiante est expirée, que faire ?",
-      time: "08:45",
-      unread: 1,
-      messages: [
-        { id: "m3", sender: "student", text: "Bonjour, ma carte étudiante est expirée, que dois-je faire ?", time: "08:45" }
-      ]
-    },
-    {
-      id: "c3",
-      studentName: "Omar Trigui",
-      studentClass: "RT3",
-      lastMessage: "Merci pour votre réponse.",
-      time: "Hier",
-      unread: 0,
-      messages: [
-        { id: "m5", sender: "student", text: "Bonjour, quand est-ce que les résultats du S1 seront affichés ?", time: "Hier 14:20" },
-        { id: "m6", sender: "admin", text: "Les résultats seront affichés le 15 juin après délibération.", time: "Hier 15:05" },
-        { id: "m7", sender: "student", text: "Merci pour votre réponse.", time: "Hier 15:10" }
-      ]
-    }
-  ]);
-  const [selectedConvId, setSelectedConvId] = useState<string | null>("c1");
+  const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null);
 
-  const selectedConv = conversations.find(c => c.id === selectedConvId) ?? null;
+  const { 
+    messages: activeConvMessages, 
+    conversations, 
+    sendMessage: sendChatMessage,
+    isConnected: isChatConnected,
+    isLoading: isChatLoading,
+    fetchConversationsList,
+    fetchConversation,
+  } = useChat({ userId: user.id, otherUserId: selectedStudentId });
+
+  // Load conversations list when admin lands on the chat tab
+  useEffect(() => {
+    if (activeTab === 'chat' && user.id) {
+      fetchConversationsList();
+    }
+  }, [activeTab, user.id, fetchConversationsList]);
+
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [activeConvMessages]);
+
   const filteredConvs = conversations.filter(c =>
-    c.studentName.toLowerCase().includes(chatSearch.toLowerCase()) ||
-    c.studentClass.toLowerCase().includes(chatSearch.toLowerCase())
+    c.user.name.toLowerCase().includes(chatSearch.toLowerCase())
   );
 
   const handleSendChatMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatInput.trim() || !selectedConvId) return;
-    const newMsg: ChatMessage = {
-      id: `msg_${Date.now()}`,
-      sender: "admin",
-      text: chatInput.trim(),
-      time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
-    };
-    setConversations(prev => prev.map(c =>
-      c.id === selectedConvId
-        ? { ...c, messages: [...c.messages, newMsg], lastMessage: newMsg.text, time: newMsg.time, unread: 0 }
-        : c
-    ));
+    if (!chatInput.trim() || !selectedStudentId) return;
+    sendChatMessage(selectedStudentId, chatInput.trim());
     setChatInput("");
     setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
   };
 
-  const handleSelectConv = (id: string) => {
-    setSelectedConvId(id);
-    setConversations(prev => prev.map(c => c.id === id ? { ...c, unread: 0 } : c));
+  const handleSelectConv = (studentId: number) => {
+    setSelectedStudentId(studentId);
+    if (user.id) fetchConversation(user.id, studentId);
   };
 
   // FEED STATE
@@ -365,11 +339,6 @@ export default function AdminDashboard() {
           >
             <Inbox className={`h-4 w-4 ${activeTab === "chat" ? "text-pink-500" : "text-slate-400"}`} />
             <span className="flex-1 text-left">Messages Étudiants</span>
-            {conversations.reduce((acc, c) => acc + c.unread, 0) > 0 && (
-              <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-pink-500 text-[10px] font-extrabold text-white">
-                {conversations.reduce((acc, c) => acc + c.unread, 0)}
-              </span>
-            )}
           </button>
         </nav>
 
@@ -711,33 +680,34 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div className="flex-1 overflow-y-auto">
+                  {filteredConvs.length === 0 && (
+                    <div className="p-6 text-center text-xs text-slate-400">
+                      <p className="font-bold">Aucune conversation</p>
+                      <p>Les messages des étudiants apparaîtront ici.</p>
+                    </div>
+                  )}
                   {filteredConvs.map(conv => (
                     <button
-                      key={conv.id}
-                      onClick={() => handleSelectConv(conv.id)}
+                      key={conv.user.id}
+                      onClick={() => handleSelectConv(conv.user.id)}
                       className={`w-full flex items-start gap-3 p-4 border-b border-slate-100 text-left transition-colors ${
-                        selectedConvId === conv.id ? "bg-pink-50" : "hover:bg-white"
+                        selectedStudentId === conv.user.id ? "bg-pink-50" : "hover:bg-white"
                       }`}
                     >
                       <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-pink-400 to-rose-500 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-md shadow-pink-200">
-                        {conv.studentName.split(" ").map(n => n[0]).join("").substring(0,2)}
+                        {conv.user.name.split(" ").map((n: string) => n[0]).join("").substring(0,2)}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <span className={`text-xs font-extrabold ${selectedConvId === conv.id ? "text-pink-700" : "text-slate-800"}`}>
-                            {conv.studentName}
+                          <span className={`text-xs font-extrabold ${selectedStudentId === conv.user.id ? "text-pink-700" : "text-slate-800"}`}>
+                            {conv.user.name}
                           </span>
-                          <span className="text-[10px] text-slate-400 font-semibold shrink-0 ml-1">{conv.time}</span>
+                          <span className="text-[10px] text-slate-400 font-semibold shrink-0 ml-1">
+                            {new Date(conv.lastMessage.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                          </span>
                         </div>
-                        <div className="text-[10px] text-slate-400 font-bold mb-0.5">{conv.studentClass}</div>
-                        <div className="flex items-center justify-between gap-1">
-                          <p className="text-[11px] text-slate-500 truncate font-medium">{conv.lastMessage}</p>
-                          {conv.unread > 0 && (
-                            <span className="shrink-0 flex h-4 w-4 items-center justify-center rounded-full bg-pink-500 text-[9px] font-extrabold text-white">
-                              {conv.unread}
-                            </span>
-                          )}
-                        </div>
+                        <div className="text-[10px] text-slate-400 font-bold mb-0.5">{conv.user.role}</div>
+                        <p className="text-[11px] text-slate-500 truncate font-medium">{conv.lastMessage.content}</p>
                       </div>
                     </button>
                   ))}
@@ -745,41 +715,56 @@ export default function AdminDashboard() {
               </div>
 
               {/* Chat panel */}
-              {selectedConv ? (
+              {selectedStudentId ? (
                 <div className="flex-1 flex flex-col min-w-0">
                   {/* Chat header */}
                   <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 bg-white shrink-0">
                     <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-pink-400 to-rose-500 text-white flex items-center justify-center font-bold text-xs shadow-md shadow-pink-200">
-                      {selectedConv.studentName.split(" ").map(n => n[0]).join("").substring(0,2)}
+                      {conversations.find(c => c.user.id === selectedStudentId)?.user.name.split(" ").map((n: string) => n[0]).join("").substring(0,2) ?? "??"}
                     </div>
                     <div>
-                      <div className="text-sm font-extrabold text-slate-800">{selectedConv.studentName}</div>
+                      <div className="text-sm font-extrabold text-slate-800">
+                        {conversations.find(c => c.user.id === selectedStudentId)?.user.name ?? "Étudiant"}
+                      </div>
                       <div className="flex items-center gap-1.5">
                         <Circle className="h-2 w-2 fill-emerald-400 text-emerald-400" />
-                        <span className="text-[10px] font-bold text-slate-400">{selectedConv.studentClass} · En ligne</span>
+                        <span className="text-[10px] font-bold text-slate-400">Étudiant INSAT</span>
                       </div>
                     </div>
                   </div>
 
                   {/* Messages */}
                   <div className="flex-1 overflow-y-auto p-5 space-y-3">
-                    {selectedConv.messages.map(msg => (
-                      <div key={msg.id} className={`flex ${msg.sender === "admin" ? "justify-end" : "justify-start"}`}>
-                        {msg.sender === "student" && (
-                          <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-pink-400 to-rose-500 text-white flex items-center justify-center font-bold text-[10px] shadow-sm mr-2 shrink-0 self-end">
-                            {selectedConv.studentName.split(" ").map(n => n[0]).join("").substring(0,2)}
-                          </div>
-                        )}
-                        <div className={`max-w-[70%] px-4 py-2.5 rounded-2xl text-sm font-medium leading-relaxed ${
-                          msg.sender === "admin"
-                            ? "bg-pink-600 text-white rounded-br-sm shadow-lg shadow-pink-500/20"
-                            : "bg-slate-100 text-slate-800 rounded-bl-sm"
-                        }`}>
-                          <p>{msg.text}</p>
-                          <p className={`text-[10px] mt-1 font-semibold ${msg.sender === "admin" ? "text-pink-200" : "text-slate-400"}`}>{msg.time}</p>
-                        </div>
+                    {isChatLoading && (
+                      <div className="text-center text-xs text-slate-400 py-4">Chargement...</div>
+                    )}
+                    {!isChatLoading && activeConvMessages.length === 0 && (
+                      <div className="text-center text-xs text-slate-400 py-8">
+                        <p className="font-bold">Aucun message dans cette conversation.</p>
                       </div>
-                    ))}
+                    )}
+                    {activeConvMessages.map(msg => {
+                      const isFromAdmin = msg.senderId === user.id;
+                      return (
+                        <div key={msg.id} className={`flex ${isFromAdmin ? "justify-end" : "justify-start"}`}>
+                          {!isFromAdmin && (
+                            <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-pink-400 to-rose-500 text-white flex items-center justify-center font-bold text-[10px] shadow-sm mr-2 shrink-0 self-end">
+                              {conversations.find(c => c.user.id === selectedStudentId)?.user.name.split(" ").map((n: string) => n[0]).join("").substring(0,2) ?? "??"}
+                            </div>
+                          )}
+                          <div className={`max-w-[70%] px-4 py-2.5 rounded-2xl text-sm font-medium leading-relaxed ${
+                            isFromAdmin
+                              ? "bg-pink-600 text-white rounded-br-sm shadow-lg shadow-pink-500/20"
+                              : "bg-slate-100 text-slate-800 rounded-bl-sm"
+                          }`}>
+                            <p>{msg.content}</p>
+                            <p className={`text-[10px] mt-1 font-semibold ${isFromAdmin ? "text-pink-200" : "text-slate-400"}`}>
+                              {new Date(msg.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
                     <div ref={chatEndRef} />
                   </div>
 
@@ -788,7 +773,7 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-3">
                       <input
                         type="text"
-                        placeholder={`Répondre à ${selectedConv.studentName}...`}
+                        placeholder={`Répondre à ${conversations.find(c => c.user.id === selectedStudentId)?.user.name ?? "l'étudiant"}...`}
                         value={chatInput}
                         onChange={e => setChatInput(e.target.value)}
                         className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100 transition-all"

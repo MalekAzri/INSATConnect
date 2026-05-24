@@ -10,6 +10,7 @@ export interface UserState {
   year: string; // e.g. "GL3", "MPI", "IIA", etc.
   name: string;
   email: string;
+  id: number | null; // Simulated backend user ID
 }
 
 interface UserContextType {
@@ -25,6 +26,7 @@ const defaultUserState: UserState = {
   year: "GL3",
   name: "",
   email: "",
+  id: null,
 };
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -49,13 +51,17 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const login = (role: UserRole, year: string = "GL3", name?: string) => {
     let defaultName = "Étudiant INSAT";
     let email = "student@insat.u-cartago.tn";
+    // Simulated IDs: admin=1, student=2 (in a real app, this comes from the backend)
+    let simulatedId: number = 2;
     
     if (role === "teacher") {
       defaultName = name || "Dr. Mohamed Slim";
       email = "m.slim@insat.u-cartago.tn";
+      simulatedId = 3;
     } else if (role === "admin") {
       defaultName = name || "Mme. Sonia (Scolarité)";
       email = "sonia.admin@insat.u-cartago.tn";
+      simulatedId = 1;
     } else if (name) {
       defaultName = name;
     }
@@ -66,6 +72,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       year: role === "student" ? year : "",
       name: defaultName,
       email,
+      id: simulatedId,
     };
     
     setUser(newUserState);
