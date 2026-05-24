@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useUser, UserRole } from "@/context/UserContext";
-import { GraduationCap, Briefcase, ShieldAlert, ArrowRight, Sparkles } from "lucide-react";
+import { GraduationCap, Briefcase, ShieldAlert, ArrowRight, Building } from "lucide-react";
 import Link from "next/link";
 
 export default function LoginPage() {
@@ -55,9 +55,10 @@ export default function LoginPage() {
       
       if (role === "student") {
         router.push("/dashboard/student");
-      } else {
-        alert(`Connexion réussie en tant que ${role === "teacher" ? "Enseignant" : "Agent Admin"}. (Pour cette version statique, l'Espace Étudiant est le principal module implémenté.)`);
-        router.push("/dashboard/student"); // Redirect to the dashboard anyway for demonstration!
+      } else if (role === "teacher") {
+        router.push("/dashboard/teacher");
+      } else if (role === "admin") {
+        router.push("/dashboard/admin");
       }
     }, 800);
   };
@@ -145,8 +146,8 @@ export default function LoginPage() {
                       : "border-slate-200 bg-white hover:border-slate-300 text-slate-600"
                   }`}
                 >
-                  <Sparkles className="h-6 w-6 mb-2" />
-                  <span className="text-xs font-semibold">Agent Admin</span>
+                  <Building className="h-6 w-6 mb-2" />
+                  <span className="text-xs font-semibold">Administration</span>
                 </button>
               </div>
             </div>
