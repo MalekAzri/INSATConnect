@@ -61,3 +61,11 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 dev.db
 *.db
 *.db-journal
+
+# Compiled seed files
+prisma/seed.js
+prisma/seed.d.ts
+prisma/seed.js.map
+
+# Uploaded files
+uploads/

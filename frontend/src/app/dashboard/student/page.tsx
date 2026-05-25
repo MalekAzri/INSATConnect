@@ -50,6 +50,7 @@ interface BackendPublication {
   id: string; title: string; category: string; content: string; author: string;
   targetYear?: string | null; fileName?: string | null; fileSizeBytes?: number | null;
   filePath?: string | null; createdAt: string;
+  grades?: { subject: string; ds: string; exam: string; avg: string }[] | null;
 }
 
 const formatPostDate = (iso: string) => {
@@ -64,6 +65,7 @@ const toStudentPost = (p: BackendPublication): Post => ({
   targetYear: p.targetYear ?? undefined, fileName: p.fileName ?? undefined,
   fileSize: p.fileSizeBytes ? `${(p.fileSizeBytes / (1024 * 1024)).toFixed(2)} Mo` : undefined,
   fileUrl: p.filePath ? buildBackendUrl(p.filePath) : undefined,
+  grades: p.grades ?? undefined,
 });
 
 interface RoomPost {
