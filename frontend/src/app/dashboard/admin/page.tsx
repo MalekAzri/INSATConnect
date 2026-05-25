@@ -23,6 +23,7 @@ import {
   Settings,
   Plus,
   FileText,
+  FileSpreadsheet,
   Inbox,
   Search,
   Circle
@@ -38,7 +39,215 @@ interface Post {
   targetYear?: string; // e.g. "GL3", "Tous"
   fileName?: string;
   fileSize?: string;
+  fileUrl?: string;
 }
+
+interface BackendPublication {
+  id: string;
+  title: string;
+  category: "urgent" | "document" | "notes" | "planning";
+  content: string;
+  author: string;
+  targetYear?: string | null;
+  fileName?: string | null;
+  filePath?: string | null;
+  fileSizeBytes?: number | null;
+  createdAt: string;
+}
+
+interface BackendCalendarConfig {
+  dsRemise: string;
+  examRemise: string;
+  dsAffichage: string;
+  examAffichage: string;
+  sem1Deliberation: string;
+  sem2Deliberation: string;
+  deliberationFinale: string;
+  s1_ds?: string | null;
+  s1_exam?: string | null;
+  s1_grades_ds?: string | null;
+  s1_publish_ds?: string | null;
+  s1_grades_exam?: string | null;
+  s1_publish_exam?: string | null;
+  s1_delib?: string | null;
+  s2_ds?: string | null;
+  s2_exam?: string | null;
+  s2_grades_ds?: string | null;
+  s2_publish_ds?: string | null;
+  s2_grades_exam?: string | null;
+  s2_publish_exam?: string | null;
+  s2_delib?: string | null;
+  end_year?: string | null;
+}
+
+interface BackendCalendarResponse {
+  config: BackendCalendarConfig;
+  sync?: { synced: boolean; reason?: string };
+}
+
+type GradeSubmissionStatus = "pending" | "validated" | "published";
+
+interface BackendGradeEntry {
+  studentName: string;
+  subject: string;
+  ds: number;
+  exam: number;
+  avg: number;
+}
+
+interface BackendGradeSubmission {
+  id: string;
+  teacherName: string;
+  teacherEmail?: string | null;
+  targetYear: string;
+  semester?: string | null;
+  title: string;
+  summary?: string | null;
+  entries: BackendGradeEntry[];
+  status: GradeSubmissionStatus;
+  validatedBy?: string | null;
+  validatedAt?: string | null;
+  publishedBy?: string | null;
+  publishedAt?: string | null;
+  publicationId?: string | null;
+  createdAt: string;
+}
+
+interface PublishGradesResponse {
+  publication: BackendPublication;
+  submissionsUpdated: number;
+  targetYear: string;
+}
+
+const gradeStatusMeta: Record<
+  GradeSubmissionStatus,
+  { label: string; className: string }
+> = {
+  pending: {
+    label: "En attente",
+    className: "bg-amber-100 text-amber-700 border-amber-200",
+  },
+  validated: {
+    label: "Validée",
+    className: "bg-blue-100 text-blue-700 border-blue-200",
+  },
+  published: {
+    label: "Publiée",
+    className: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  },
+};
+
+const formatPostDate = (isoDate: string) => {
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) return "Date inconnue";
+  return date.toLocaleString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const formatFileSize = (bytes?: number | null) => {
+  if (!bytes || bytes <= 0) return undefined;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} Mo`;
+};
+
+const toPost = (publication: BackendPublication): Post => ({
+  id: publication.id,
+  title: publication.title,
+  category: publication.category,
+  content: publication.content,
+  date: formatPostDate(publication.createdAt),
+  author: publication.author,
+  targetYear: publication.targetYear ?? "Tous",
+  fileName: publication.fileName ?? undefined,
+  fileSize: formatFileSize(publication.fileSizeBytes),
+  fileUrl: publication.filePath ? buildBackendUrl(publication.filePath) : undefined,
+});
+
+const buildCalendarEvents = (calConfig: Record<string, string>): CalendarEvent[] => {
+  const eventsToCreate: CalendarEvent[] = [];
+
+  const addEvent = (dateStr: string, type: CalendarEvent["type"], title: string) => {
+    if (!dateStr) return;
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return;
+    eventsToCreate.push({
+      dayNumber: d.getDate(),
+      type,
+      title,
+      date: dateStr,
+    });
+  };
+
+  addEvent(calConfig.s1_ds, "exam", "Date début DS S1");
+  addEvent(calConfig.s1_grades_ds, "grading", "Remise Notes DS S1");
+  addEvent(calConfig.s1_publish_ds, "deadline", "Affichage DS S1");
+
+  addEvent(calConfig.s1_exam, "exam", "Date début examens S1");
+  addEvent(calConfig.s1_grades_exam, "grading", "Remise Notes Examens S1");
+  addEvent(calConfig.s1_publish_exam, "deadline", "Affichage Examens S1");
+
+  addEvent(calConfig.s1_delib, "deadline", "Délibérations S1");
+
+  addEvent(calConfig.s2_ds, "exam", "Date début DS S2");
+  addEvent(calConfig.s2_grades_ds, "grading", "Remise Notes DS S2");
+  addEvent(calConfig.s2_publish_ds, "deadline", "Affichage DS S2");
+
+  addEvent(calConfig.s2_exam, "exam", "Date début examens S2");
+  addEvent(calConfig.s2_grades_exam, "grading", "Remise Notes Examens S2");
+  addEvent(calConfig.s2_publish_exam, "deadline", "Affichage Examens S2");
+
+  addEvent(calConfig.s2_delib, "deadline", "Délibérations S2");
+  addEvent(calConfig.end_year, "deadline", "Délibérations de fin d'année");
+
+  return eventsToCreate;
+};
+
+const toCalendarPayload = (calConfig: Record<string, string>) => ({
+  s1_ds: calConfig.s1_ds,
+  s1_exam: calConfig.s1_exam,
+  s1_grades_ds: calConfig.s1_grades_ds,
+  s1_publish_ds: calConfig.s1_publish_ds,
+  s1_grades_exam: calConfig.s1_grades_exam,
+  s1_publish_exam: calConfig.s1_publish_exam,
+  s1_delib: calConfig.s1_delib,
+  s2_ds: calConfig.s2_ds,
+  s2_exam: calConfig.s2_exam,
+  s2_grades_ds: calConfig.s2_grades_ds,
+  s2_publish_ds: calConfig.s2_publish_ds,
+  s2_grades_exam: calConfig.s2_grades_exam,
+  s2_publish_exam: calConfig.s2_publish_exam,
+  s2_delib: calConfig.s2_delib,
+  end_year: calConfig.end_year,
+  dsRemise: calConfig.s1_grades_ds,
+  examRemise: calConfig.s1_grades_exam,
+  dsAffichage: calConfig.s1_publish_ds,
+  examAffichage: calConfig.s1_publish_exam,
+  sem1Deliberation: calConfig.s1_delib,
+  sem2Deliberation: calConfig.s2_delib,
+  deliberationFinale: calConfig.end_year,
+});
+
+const fromBackendCalendar = (config: BackendCalendarConfig) => ({
+  s1_ds: config.s1_ds ?? config.dsRemise,
+  s1_exam: config.s1_exam ?? config.examRemise,
+  s1_grades_ds: config.s1_grades_ds ?? config.dsRemise,
+  s1_publish_ds: config.s1_publish_ds ?? config.dsAffichage,
+  s1_grades_exam: config.s1_grades_exam ?? config.examRemise,
+  s1_publish_exam: config.s1_publish_exam ?? config.examAffichage,
+  s1_delib: config.s1_delib ?? config.sem1Deliberation,
+  s2_ds: config.s2_ds ?? config.dsRemise,
+  s2_exam: config.s2_exam ?? config.examRemise,
+  s2_grades_ds: config.s2_grades_ds ?? config.dsRemise,
+  s2_publish_ds: config.s2_publish_ds ?? config.dsAffichage,
+  s2_grades_exam: config.s2_grades_exam ?? config.examRemise,
+  s2_publish_exam: config.s2_publish_exam ?? config.examAffichage,
+  s2_delib: config.s2_delib ?? config.sem2Deliberation,
+  end_year: config.end_year ?? config.deliberationFinale,
+});
 
 // ─── Chat types ──────────────────────────────────────────────────────────────
 interface ChatMessage {
@@ -61,7 +270,9 @@ interface Conversation {
 export default function AdminDashboard() {
   const router = useRouter();
   const { user, logout } = useUser();
-  const [activeTab, setActiveTab] = useState<"feed" | "calendar" | "chat">("feed");
+  const [activeTab, setActiveTab] = useState<
+    "feed" | "calendar" | "grades" | "chat"
+  >("feed");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Redirect to login if user directly lands on dashboard without being authenticated
@@ -114,7 +325,6 @@ export default function AdminDashboard() {
     if (!chatInput.trim() || !selectedStudentId) return;
     sendChatMessage(selectedStudentId, chatInput.trim());
     setChatInput("");
-    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
   };
 
   const handleSelectConv = (studentId: number) => {
@@ -123,52 +333,204 @@ export default function AdminDashboard() {
   };
 
   // FEED STATE
-  const [feedPosts, setFeedPosts] = useState<Post[]>([
-    {
-      id: "p1",
-      title: "URGENT: Tolérance Zéro Contre la Fraude aux Examens",
-      category: "urgent",
-      content: "Il est rappelé à tous les étudiants de l'INSAT que toute tentative de fraude ou utilisation de matériel non autorisé (téléphones connectés, écouteurs, documents non signés) durant les devoirs surveillés entraînera la traduction immédiate devant le conseil de discipline de l'université. Nous comptons sur votre rigueur académique.",
-      date: "Il y a 2 heures",
-      author: "Direction des Études",
-      targetYear: "Tous"
-    }
-  ]);
+  const [feedPosts, setFeedPosts] = useState<Post[]>([]);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [isLoadingFeed, setIsLoadingFeed] = useState(true);
 
   const [newPostTitle, setNewPostTitle] = useState("");
   const [newPostContent, setNewPostContent] = useState("");
-  const [newPostCategory, setNewPostCategory] = useState<"urgent" | "document" | "notes" | "planning">("notes");
+  const [newPostCategory, setNewPostCategory] = useState<"urgent" | "document" | "planning">("planning");
   const [newPostTarget, setNewPostTarget] = useState("Tous");
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleCreatePost = (e: React.FormEvent) => {
+  const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPostTitle.trim() || !newPostContent.trim()) return;
+    setIsPublishing(true);
 
-    const newPost: Post = {
-      id: `p_${Date.now()}`,
-      title: newPostTitle,
-      category: newPostCategory,
-      content: newPostContent,
-      date: "À l'instant",
-      author: user.name || "Scolarité INSAT",
-      targetYear: newPostTarget,
-      fileName: attachedFile ? attachedFile.name : undefined,
-      fileSize: attachedFile ? (attachedFile.size / (1024 * 1024)).toFixed(2) + " Mo" : undefined
-    };
+    try {
+      const formData = new FormData();
+      formData.append("title", newPostTitle.trim());
+      formData.append("category", newPostCategory);
+      formData.append("content", newPostContent.trim());
+      formData.append("author", user.name || "Scolarité INSAT");
+      if (newPostTarget && newPostTarget !== "Tous") {
+        formData.append("targetYear", newPostTarget.trim().toUpperCase());
+      }
+      if (attachedFile) {
+        formData.append("file", attachedFile);
+      }
 
-    setFeedPosts([newPost, ...feedPosts]);
-    setNewPostTitle("");
-    setNewPostContent("");
-    setAttachedFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    showToast("Publication envoyée !");
+      const response = await fetch(buildBackendUrl("/admin-agent/publications"), {
+        method: "POST",
+        body: formData,
+      });
+      if (!response.ok) {
+        throw new Error("Échec de création de publication.");
+      }
+
+      const createdPublication = (await response.json()) as BackendPublication;
+      if (createdPublication.category !== "notes") {
+        setFeedPosts((prev) => [toPost(createdPublication), ...prev]);
+      }
+      setNewPostTitle("");
+      setNewPostContent("");
+      setAttachedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      showToast("Publication envoyée !");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erreur inconnue";
+      showToast(`Erreur publication: ${message}`);
+    } finally {
+      setIsPublishing(false);
+    }
   };
+
+  // GRADES STATE
+  const [gradeSubmissions, setGradeSubmissions] = useState<BackendGradeSubmission[]>(
+    [],
+  );
+  const [isLoadingGrades, setIsLoadingGrades] = useState(false);
+  const [gradeStatusFilter, setGradeStatusFilter] = useState<
+    "all" | GradeSubmissionStatus
+  >("all");
+  const [gradeTargetFilter, setGradeTargetFilter] = useState("ALL");
+  const [publishDrafts, setPublishDrafts] = useState<
+    Record<string, { title: string; content: string }>
+  >({});
+  const [validatingSubmissionId, setValidatingSubmissionId] = useState<string | null>(
+    null,
+  );
+  const [publishingSubmissionId, setPublishingSubmissionId] = useState<string | null>(
+    null,
+  );
+
+  const openGradesTab = () => {
+    setActiveTab("grades");
+    setGradeStatusFilter("all");
+    setGradeTargetFilter("ALL");
+  };
+
+  const loadGradeSubmissions = async () => {
+    setIsLoadingGrades(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("limit", "100");
+      if (gradeStatusFilter !== "all") {
+        params.set("status", gradeStatusFilter);
+      }
+      if (gradeTargetFilter !== "ALL") {
+        params.set("targetYear", gradeTargetFilter);
+      }
+      const data = await backendFetchJson<BackendGradeSubmission[]>(
+        `/admin-agent/grades/submissions?${params.toString()}`,
+      );
+      setGradeSubmissions(data);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erreur inconnue";
+      showToast(`Impossible de charger les soumissions de notes: ${message}`);
+    } finally {
+      setIsLoadingGrades(false);
+    }
+  };
+
+  const handleValidateSubmission = async (submissionId: string) => {
+    setValidatingSubmissionId(submissionId);
+    try {
+      await backendFetchJson<BackendGradeSubmission>(
+        `/admin-agent/grades/submissions/${submissionId}/validate`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            validatedBy: user.name || "Agent admin",
+          }),
+        },
+      );
+      showToast("Soumission validée.");
+      await loadGradeSubmissions();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erreur inconnue";
+      showToast(`Validation impossible: ${message}`);
+    } finally {
+      setValidatingSubmissionId(null);
+    }
+  };
+
+  const handlePublishGrades = async ({
+    targetYear,
+    submissionIds,
+    title,
+    content,
+  }: {
+    targetYear: string;
+    submissionIds?: string[];
+    title?: string;
+    content?: string;
+  }) => {
+    const normalizedTarget = targetYear.trim().toUpperCase();
+    if (!normalizedTarget) {
+      showToast("Choisissez une promotion cible.");
+      return;
+    }
+
+    if (submissionIds?.length) {
+      setPublishingSubmissionId(submissionIds[0]);
+    }
+
+    try {
+      const result = await backendFetchJson<PublishGradesResponse>(
+        "/admin-agent/grades/publish",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            targetYear: normalizedTarget,
+            submissionIds: submissionIds?.length ? submissionIds : undefined,
+            publishedBy: user.name || "Service de scolarité",
+            title: title?.trim() || undefined,
+            content: content?.trim() || undefined,
+            notifyStudents: true,
+          }),
+        },
+      );
+
+      if (result.publication.category !== "notes") {
+        setFeedPosts((prev) => [toPost(result.publication), ...prev]);
+      }
+      showToast(
+        `Notes publiées pour ${result.targetYear} (${result.submissionsUpdated} soumission(s)).`,
+      );
+      await loadGradeSubmissions();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erreur inconnue";
+      showToast(`Publication des notes impossible: ${message}`);
+    } finally {
+      setPublishingSubmissionId(null);
+    }
+  };
+
+  const updatePublishDraft = (
+    submissionId: string,
+    field: "title" | "content",
+    value: string,
+  ) => {
+    setPublishDrafts((prev) => ({
+      ...prev,
+      [submissionId]: {
+        title: prev[submissionId]?.title ?? "",
+        content: prev[submissionId]?.content ?? "",
+        [field]: value,
+      },
+    }));
+  };
+
+  const getPublishDraft = (submissionId: string) =>
+    publishDrafts[submissionId] ?? { title: "", content: "" };
 
   // CALENDAR STATE
   const [isCalendarConfigured, setIsCalendarConfigured] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [isSavingCalendar, setIsSavingCalendar] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [editDate, setEditDate] = useState("");
 
@@ -187,65 +549,292 @@ export default function AdminDashboard() {
     setCalConfig(prev => ({ ...prev, [field]: value }));
   };
 
-  const submitCalendarConfig = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Convert dates to CalendarEvents
-    // We assume May 2026 is the demo month, so we'll just extract the day from the selected dates if they are in May.
-    // For a real app, CalendarEvent would store a full date string, but our mock calendar uses dayNumber for the current month.
-    // We'll adapt: if user picks a date, we parse it and extract the day for our demo calendar.
-    const eventsToCreate: CalendarEvent[] = [];
-
-    const addEvent = (dateStr: string, type: CalendarEvent["type"], title: string) => {
-      if (!dateStr) return;
-      const d = new Date(dateStr);
-      // Only add to our demo grid if it's in May 2026 (or just add the day anyway for demo purposes)
-      eventsToCreate.push({
-        dayNumber: d.getDate(),
-        type,
-        title,
-        id: `${type}_${Date.now()}_${Math.random()}`
-      } as any); // Ignoring strict typing for 'id' property we will add later if needed
+  useEffect(() => {
+    const loadFeed = async () => {
+      setIsLoadingFeed(true);
+      try {
+        const publications = await backendFetchJson<BackendPublication[]>(
+          "/admin-agent/publications?limit=100",
+        );
+        setFeedPosts(publications.filter((publication) => publication.category !== "notes").map(toPost));
+      } catch (error) {
+        console.error(error);
+        showToast("Impossible de charger les publications backend.");
+      } finally {
+        setIsLoadingFeed(false);
+      }
     };
 
-    addEvent(calConfig.s1_ds, 'exam', "Semaine DS S1");
-    addEvent(calConfig.s1_grades_ds, 'grading', "Remise Notes DS S1");
-    addEvent(calConfig.s1_publish_ds, 'deadline', "Affichage DS S1");
-    
-    addEvent(calConfig.s1_exam, 'exam', "Semaine Examens S1");
-    addEvent(calConfig.s1_grades_exam, 'grading', "Remise Notes Examens S1");
-    addEvent(calConfig.s1_publish_exam, 'deadline', "Affichage Examens S1");
-    
-    addEvent(calConfig.s1_delib, 'deadline', "Délibérations S1");
+    loadFeed();
+  }, []);
 
-    addEvent(calConfig.s2_ds, 'exam', "Semaine DS S2");
-    addEvent(calConfig.s2_grades_ds, 'grading', "Remise Notes DS S2");
-    addEvent(calConfig.s2_publish_ds, 'deadline', "Affichage DS S2");
-    
-    addEvent(calConfig.s2_exam, 'exam', "Semaine Examens S2");
-    addEvent(calConfig.s2_grades_exam, 'grading', "Remise Notes Examens S2");
-    addEvent(calConfig.s2_publish_exam, 'deadline', "Affichage Examens S2");
-    
-    addEvent(calConfig.s2_delib, 'deadline', "Délibérations S2");
-    addEvent(calConfig.end_year, 'deadline', "Délibérations de fin d'année");
+  useEffect(() => {
+    const loadCalendar = async () => {
+      try {
+        const config = await backendFetchJson<BackendCalendarConfig | null>(
+          "/admin-agent/calendar",
+        );
+        if (!config) return;
 
-    setCalendarEvents(eventsToCreate);
-    setIsCalendarConfigured(true);
-    showToast("Calendrier académique configuré avec succès !");
+        const normalizedConfig = fromBackendCalendar(config);
+        setCalConfig(normalizedConfig);
+        setCalendarEvents(buildCalendarEvents(normalizedConfig));
+        setIsCalendarConfigured(true);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    loadCalendar();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== "grades") return;
+    void loadGradeSubmissions();
+  }, [activeTab, gradeStatusFilter, gradeTargetFilter]);
+
+  useEffect(() => {
+    if (!user.isLoggedIn) return;
+
+    const es = new EventSource(
+      buildBackendUrl("/admin-agent/notifications/stream?role=admin"),
+    );
+
+    es.addEventListener("grades.published", () => {
+      showToast("Notification: des notes viennent d'être publiées.");
+    });
+
+    es.addEventListener("publication.created", () => {
+      // No-op for admin because the feed is already immediately updated on create.
+    });
+
+    es.onerror = () => {
+      // Keep silent to avoid noisy toasts on transient reconnects.
+    };
+
+    return () => es.close();
+  }, [user.isLoggedIn]);
+
+  const submitCalendarConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingCalendar(true);
+
+    try {
+      const payload = toCalendarPayload(calConfig);
+      const result = await backendFetchJson<BackendCalendarResponse>(
+        "/admin-agent/calendar?syncCalendar=true",
+        {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        },
+      );
+
+      setCalendarEvents(buildCalendarEvents(calConfig));
+      setIsCalendarConfigured(true);
+
+      if (result.sync?.synced === false) {
+        showToast("Calendrier enregistré, mais sync externe échouée.");
+      } else {
+        showToast("Calendrier académique configuré avec succès !");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erreur inconnue";
+      showToast(`Erreur calendrier: ${message}`);
+    } finally {
+      setIsSavingCalendar(false);
+    }
   };
 
-  const handleEditEventSubmit = (e: React.FormEvent) => {
+  const eventTitleToField: Record<string, string> = {
+    "Date début DS S1": "s1_ds",
+    "Semaine DS S1": "s1_ds",
+    "Remise Notes DS S1": "s1_grades_ds",
+    "Affichage DS S1": "s1_publish_ds",
+    "Date début examens S1": "s1_exam",
+    "Semaine Examens S1": "s1_exam",
+    "Remise Notes Examens S1": "s1_grades_exam",
+    "Affichage Examens S1": "s1_publish_exam",
+    "Délibérations S1": "s1_delib",
+    "Date début DS S2": "s2_ds",
+    "Semaine DS S2": "s2_ds",
+    "Remise Notes DS S2": "s2_grades_ds",
+    "Affichage DS S2": "s2_publish_ds",
+    "Date début examens S2": "s2_exam",
+    "Semaine Examens S2": "s2_exam",
+    "Remise Notes Examens S2": "s2_grades_exam",
+    "Affichage Examens S2": "s2_publish_exam",
+    "Délibérations S2": "s2_delib",
+    "Délibérations de fin d'année": "end_year",
+  };
+
+  const handleEditEventSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingEvent || !editDate) return;
     
     const d = new Date(editDate);
     const newDay = d.getDate();
     
-    setCalendarEvents(calendarEvents.map(evt => 
-      evt.title === editingEvent.title && evt.type === editingEvent.type ? { ...evt, dayNumber: newDay } : evt
+    setCalendarEvents(calendarEvents.map(evt =>
+      evt.title === editingEvent.title && evt.type === editingEvent.type
+        ? { ...evt, dayNumber: newDay, date: editDate }
+        : evt
     ));
+
+    const field = eventTitleToField[editingEvent.title];
+    if (field) {
+      const updatedConfig = { ...calConfig, [field]: editDate };
+      setCalConfig(updatedConfig);
+
+      try {
+        await backendFetchJson<BackendCalendarResponse>(
+          "/admin-agent/calendar?syncCalendar=true",
+          {
+            method: "PUT",
+            body: JSON.stringify(toCalendarPayload(updatedConfig)),
+          },
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erreur inconnue";
+        showToast(`Modification locale ok, sync backend échouée: ${message}`);
+      }
+    }
+
     setEditingEvent(null);
     showToast(`Événement "${editingEvent.title}" modifié !`);
+  };
+
+  const gradeTargets = Array.from(
+    new Set(gradeSubmissions.map((submission) => submission.targetYear.toUpperCase())),
+  ).sort();
+
+  const pendingSubmissions = gradeSubmissions.filter(
+    (submission) => submission.status === "pending",
+  );
+  const validatedSubmissions = gradeSubmissions.filter(
+    (submission) => submission.status === "validated",
+  );
+  const publishedSubmissions = gradeSubmissions.filter(
+    (submission) => submission.status === "published",
+  );
+
+  const renderSubmissionCard = (submission: BackendGradeSubmission) => {
+    const status = gradeStatusMeta[submission.status];
+    const publishDraft = getPublishDraft(submission.id);
+
+    return (
+      <div key={submission.id} className="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border ${status.className}`}>
+                {status.label}
+              </span>
+              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border bg-slate-50 text-slate-500 border-slate-200">
+                {submission.targetYear}
+              </span>
+              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border bg-slate-50 text-slate-500 border-slate-200">
+                {submission.semester || "Semestre N/A"}
+              </span>
+            </div>
+            <h4 className="text-base font-black text-slate-800">{submission.title}</h4>
+            <p className="text-xs text-slate-500 font-semibold">
+              Soumise par {submission.teacherName} · {submission.entries.length} ligne(s) · {formatPostDate(submission.createdAt)}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {submission.status === "pending" && (
+              <button
+                type="button"
+                onClick={() => void handleValidateSubmission(submission.id)}
+                disabled={validatingSubmissionId === submission.id}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white transition-colors"
+              >
+                {validatingSubmissionId === submission.id ? "Validation..." : "Valider"}
+              </button>
+            )}
+
+            {submission.status === "published" && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Déjà publiée
+              </span>
+            )}
+          </div>
+        </div>
+
+        {submission.summary && (
+          <p className="text-sm text-slate-600">{submission.summary}</p>
+        )}
+
+        {submission.status === "validated" && (
+          <div className="rounded-2xl border border-pink-100 bg-pink-50/50 p-4 space-y-3">
+            <p className="text-[11px] font-extrabold uppercase text-pink-700">
+              Publication de cette soumission uniquement
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1.8fr_auto] gap-2">
+              <input
+                type="text"
+                value={publishDraft.title}
+                onChange={(e) => updatePublishDraft(submission.id, "title", e.target.value)}
+                placeholder={`Titre (optionnel) ex: Notes ${submission.targetYear}`}
+                className="bg-white border border-pink-100 rounded-xl p-2.5 text-xs font-semibold text-slate-700 placeholder-slate-400 focus:outline-none focus:border-pink-300"
+              />
+              <input
+                type="text"
+                value={publishDraft.content}
+                onChange={(e) => updatePublishDraft(submission.id, "content", e.target.value)}
+                placeholder="Message étudiant (optionnel)"
+                className="bg-white border border-pink-100 rounded-xl p-2.5 text-xs font-medium text-slate-700 placeholder-slate-400 focus:outline-none focus:border-pink-300"
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  void handlePublishGrades({
+                    targetYear: submission.targetYear,
+                    submissionIds: [submission.id],
+                    title: publishDraft.title,
+                    content: publishDraft.content,
+                  })
+                }
+                disabled={publishingSubmissionId === submission.id}
+                className="px-3 py-2 rounded-xl text-xs font-bold bg-pink-600 hover:bg-pink-700 disabled:bg-pink-300 text-white transition-colors"
+              >
+                {publishingSubmissionId === submission.id ? "Publication..." : "Publier"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="rounded-2xl border border-slate-100 p-3 bg-slate-50/50">
+            <p className="text-[11px] font-extrabold uppercase text-slate-500 mb-2">Traçabilité</p>
+            <p className="text-xs text-slate-600">Créée: {formatPostDate(submission.createdAt)}</p>
+            <p className="text-xs text-slate-600">
+              Validée: {submission.validatedAt ? `${submission.validatedBy || "Admin"} · ${formatPostDate(submission.validatedAt)}` : "Non"}
+            </p>
+            <p className="text-xs text-slate-600">
+              Publiée: {submission.publishedAt ? `${submission.publishedBy || "Admin"} · ${formatPostDate(submission.publishedAt)}` : "Non"}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-100 p-3 bg-slate-50/50">
+            <p className="text-[11px] font-extrabold uppercase text-slate-500 mb-2">Aperçu des lignes</p>
+            <div className="space-y-1.5">
+              {submission.entries.slice(0, 4).map((entry, index) => (
+                <p key={`${submission.id}-${entry.studentName}-${entry.subject}-${index}`} className="text-xs text-slate-600">
+                  {entry.studentName} · {entry.subject} · DS {entry.ds} · EX {entry.exam} · AVG {entry.avg}
+                </p>
+              ))}
+              {submission.entries.length > 4 && (
+                <p className="text-xs font-semibold text-slate-500">
+                  +{submission.entries.length - 4} ligne(s) supplémentaire(s)
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -332,6 +921,16 @@ export default function AdminDashboard() {
           </button>
 
           <button
+            onClick={openGradesTab}
+            className={`flex w-full items-center gap-3 px-4 py-3.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === "grades" ? "bg-pink-50/70 text-pink-600" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+            }`}
+          >
+            <FileSpreadsheet className={`h-4 w-4 ${activeTab === "grades" ? "text-pink-500" : "text-slate-400"}`} />
+            Validation des Notes
+          </button>
+
+          <button
             onClick={() => setActiveTab("chat")}
             className={`flex w-full items-center gap-3 px-4 py-3.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
               activeTab === "chat" ? "bg-pink-50/70 text-pink-600" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
@@ -359,7 +958,13 @@ export default function AdminDashboard() {
             </button>
             <div>
               <h1 className="text-lg font-black text-slate-800 tracking-tight">
-                {activeTab === "feed" ? "Fil d'Actualité" : activeTab === "calendar" ? "Configuration du Calendrier" : "Messages Étudiants"}
+                {activeTab === "feed"
+                  ? "Fil d'Actualité"
+                  : activeTab === "calendar"
+                    ? "Configuration du Calendrier"
+                    : activeTab === "grades"
+                      ? "Validation & Publication des Notes"
+                      : "Messages Étudiants"}
               </h1>
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
                 INSAT Tunis <ChevronRight className="h-3 w-3" /> Administration
@@ -412,10 +1017,9 @@ export default function AdminDashboard() {
                       <label className="text-xs font-bold text-slate-500 mb-1 block">Catégorie</label>
                       <select 
                         value={newPostCategory}
-                        onChange={(e: any) => setNewPostCategory(e.target.value)}
+                        onChange={(e) => setNewPostCategory(e.target.value as "urgent" | "document" | "planning")}
                         className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold text-slate-700 focus:outline-none focus:border-pink-300"
                       >
-                        <option value="notes">Scolarité & Notes</option>
                         <option value="planning">Planning & Emploi</option>
                         <option value="urgent">Urgent / Alerte</option>
                         <option value="document">Document Administratif</option>
@@ -466,10 +1070,10 @@ export default function AdminDashboard() {
                     </div>
                     <button 
                       type="submit"
-                      disabled={!newPostTitle.trim() || !newPostContent.trim()}
+                      disabled={!newPostTitle.trim() || !newPostContent.trim() || isPublishing}
                       className="bg-pink-600 disabled:bg-pink-300 hover:bg-pink-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-pink-500/20 transition-all flex items-center gap-2"
                     >
-                      Publier l'annonce <SendHorizontal className="h-4 w-4" />
+                      {isPublishing ? "Publication..." : "Publier l'annonce"} <SendHorizontal className="h-4 w-4" />
                     </button>
                   </div>
                 </form>
@@ -481,7 +1085,19 @@ export default function AdminDashboard() {
                   <BookOpen className="h-4 w-4 text-pink-500" /> Annonces Publiées
                 </h3>
                 
-                {feedPosts.map(post => {
+                {isLoadingFeed && (
+                  <div className="bg-white border border-slate-100 rounded-2xl p-4 text-xs font-semibold text-slate-500">
+                    Chargement des publications...
+                  </div>
+                )}
+
+                {!isLoadingFeed && feedPosts.length === 0 && (
+                  <div className="bg-white border border-slate-100 rounded-2xl p-4 text-xs font-semibold text-slate-500">
+                    Aucune publication disponible.
+                  </div>
+                )}
+
+                {!isLoadingFeed && feedPosts.map(post => {
                   let style = 'border-slate-100';
                   let badge = 'bg-slate-100 text-slate-600';
                   
@@ -549,11 +1165,11 @@ export default function AdminDashboard() {
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <label className="text-xs font-bold text-slate-500 mb-1 block">Semaine des DS</label>
+                          <label className="text-xs font-bold text-slate-500 mb-1 block">Date début DS</label>
                           <input type="date" required value={calConfig.s1_ds} onChange={e => handleCalConfigChange('s1_ds', e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold text-slate-800 focus:border-pink-300" />
                         </div>
                         <div>
-                          <label className="text-xs font-bold text-slate-500 mb-1 block">Semaine des Examens</label>
+                          <label className="text-xs font-bold text-slate-500 mb-1 block">Date début examens</label>
                           <input type="date" required value={calConfig.s1_exam} onChange={e => handleCalConfigChange('s1_exam', e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold text-slate-800 focus:border-pink-300" />
                         </div>
                         <div>
@@ -587,11 +1203,11 @@ export default function AdminDashboard() {
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <label className="text-xs font-bold text-slate-500 mb-1 block">Semaine des DS</label>
+                          <label className="text-xs font-bold text-slate-500 mb-1 block">Date début DS</label>
                           <input type="date" required value={calConfig.s2_ds} onChange={e => handleCalConfigChange('s2_ds', e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold text-slate-800 focus:border-pink-300" />
                         </div>
                         <div>
-                          <label className="text-xs font-bold text-slate-500 mb-1 block">Semaine des Examens</label>
+                          <label className="text-xs font-bold text-slate-500 mb-1 block">Date début examens</label>
                           <input type="date" required value={calConfig.s2_exam} onChange={e => handleCalConfigChange('s2_exam', e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold text-slate-800 focus:border-pink-300" />
                         </div>
                         <div>
@@ -624,9 +1240,10 @@ export default function AdminDashboard() {
                     <div className="pt-6 border-t border-slate-100 flex justify-end">
                       <button 
                         type="submit"
-                        className="bg-pink-600 hover:bg-pink-700 text-white px-8 py-3 rounded-xl text-sm font-bold shadow-lg shadow-pink-500/20 transition-all flex items-center gap-2"
+                        disabled={isSavingCalendar}
+                        className="bg-pink-600 disabled:bg-pink-300 hover:bg-pink-700 text-white px-8 py-3 rounded-xl text-sm font-bold shadow-lg shadow-pink-500/20 transition-all flex items-center gap-2"
                       >
-                        Générer le calendrier <ChevronRight className="h-4 w-4" />
+                        {isSavingCalendar ? "Enregistrement..." : "Générer le calendrier"} <ChevronRight className="h-4 w-4" />
                       </button>
                     </div>
                   </form>
@@ -652,10 +1269,137 @@ export default function AdminDashboard() {
                     events={calendarEvents}
                     onEventEdit={(evt) => {
                       setEditingEvent(evt);
-                      // Set a default date string for the input (mocking May 2026)
-                      setEditDate(`2026-05-${evt.dayNumber.toString().padStart(2, '0')}`);
+                      setEditDate(evt.date || "");
                     }}
                   />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB: GRADES */}
+          {activeTab === "grades" && (
+            <div className="max-w-5xl mx-auto w-full space-y-6">
+              <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-4">
+                <div>
+                  <h2 className="text-lg font-black text-slate-800">
+                    Pipeline Enseignant → Admin → Étudiants
+                  </h2>
+                  <p className="text-sm font-medium text-slate-500 mt-1">
+                    1) validation des soumissions reçues, 2) publication ciblée par promotion.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 mb-1 block">Filtre statut</label>
+                    <select
+                      value={gradeStatusFilter}
+                      onChange={(e) =>
+                        setGradeStatusFilter(e.target.value as "all" | GradeSubmissionStatus)
+                      }
+                      className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold text-slate-700 focus:outline-none focus:border-pink-300"
+                    >
+                      <option value="all">Tous les statuts</option>
+                      <option value="pending">En attente</option>
+                      <option value="validated">Validées</option>
+                      <option value="published">Publiées</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 mb-1 block">Filtre promotion</label>
+                    <select
+                      value={gradeTargetFilter}
+                      onChange={(e) => setGradeTargetFilter(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold text-slate-700 focus:outline-none focus:border-pink-300"
+                    >
+                      <option value="ALL">Toutes les promotions</option>
+                      {gradeTargets.map((target) => (
+                        <option key={`filter-${target}`} value={target}>
+                          {target}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={() => void loadGradeSubmissions()}
+                      className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-3 rounded-xl text-sm font-bold transition-colors"
+                    >
+                      Actualiser la liste
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-3">
+                    <p className="text-[11px] font-extrabold uppercase text-amber-700">En attente</p>
+                    <p className="text-2xl font-black text-amber-800">{pendingSubmissions.length}</p>
+                    <p className="text-[11px] font-semibold text-amber-700/80">À valider par l'admin</p>
+                  </div>
+                  <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-3">
+                    <p className="text-[11px] font-extrabold uppercase text-blue-700">Validées</p>
+                    <p className="text-2xl font-black text-blue-800">{validatedSubmissions.length}</p>
+                    <p className="text-[11px] font-semibold text-blue-700/80">Prêtes à publier</p>
+                  </div>
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3">
+                    <p className="text-[11px] font-extrabold uppercase text-emerald-700">Publiées</p>
+                    <p className="text-2xl font-black text-emerald-800">{publishedSubmissions.length}</p>
+                    <p className="text-[11px] font-semibold text-emerald-700/80">Déjà visibles côté étudiant</p>
+                  </div>
+                </div>
+              </div>
+
+              {isLoadingGrades && (
+                <div className="bg-white border border-slate-100 rounded-2xl p-4 text-xs font-semibold text-slate-500">
+                  Chargement des soumissions...
+                </div>
+              )}
+
+              {!isLoadingGrades && gradeSubmissions.length === 0 && (
+                <div className="bg-white border border-slate-100 rounded-2xl p-4 text-xs font-semibold text-slate-500 space-y-2">
+                  <p>Aucune soumission trouvée avec les filtres actuels.</p>
+                  <p>
+                    Statut: <span className="font-bold">{gradeStatusFilter}</span> · Promotion:{" "}
+                    <span className="font-bold">{gradeTargetFilter}</span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={openGradesTab}
+                    className="inline-flex items-center rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-bold text-slate-700 hover:bg-slate-50"
+                  >
+                    Réinitialiser les filtres
+                  </button>
+                </div>
+              )}
+
+              {!isLoadingGrades && pendingSubmissions.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-extrabold text-amber-700 uppercase tracking-wider">
+                    Étape 1 · Soumissions en attente de validation
+                  </h3>
+                  {pendingSubmissions.map(renderSubmissionCard)}
+                </div>
+              )}
+
+              {!isLoadingGrades && validatedSubmissions.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-extrabold text-blue-700 uppercase tracking-wider">
+                    Étape 2 · Soumissions validées à publier
+                  </h3>
+                  {validatedSubmissions.map(renderSubmissionCard)}
+                </div>
+              )}
+
+              {!isLoadingGrades && publishedSubmissions.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-extrabold text-emerald-700 uppercase tracking-wider">
+                    Étape 3 · Soumissions déjà publiées
+                  </h3>
+                  {publishedSubmissions.map(renderSubmissionCard)}
                 </div>
               )}
             </div>
@@ -791,7 +1535,7 @@ export default function AdminDashboard() {
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-3">
                   <Inbox className="h-10 w-10 text-slate-200" />
-                  <p className="text-sm font-bold">Sélectionnez une conversation</p>
+                  <p className="text-sm font-bold">Aucune conversation backend disponible</p>
                 </div>
               )}
             </div>

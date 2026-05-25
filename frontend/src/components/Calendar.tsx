@@ -5,6 +5,7 @@ export interface CalendarEvent {
   dayNumber: number;
   type: 'exam' | 'deadline' | 'vacation' | 'grading' | 'other';
   title: string;
+  date?: string;
 }
 
 interface CalendarProps {
@@ -15,8 +16,44 @@ interface CalendarProps {
 }
 
 export default function Calendar({ events, title = "Chronologie Académique", subtitle = "INSAT Tunis", onEventEdit }: CalendarProps) {
+  const parseDate = (value?: string) => {
+    if (!value) return null;
+    const exact = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+    if (exact) {
+      const year = Number(exact[1]);
+      const month = Number(exact[2]) - 1;
+      const day = Number(exact[3]);
+      const d = new Date(year, month, day);
+      if (
+        d.getFullYear() === year &&
+        d.getMonth() === month &&
+        d.getDate() === day
+      ) {
+        return d;
+      }
+      return null;
+    }
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed;
+  };
+
+  const datedEvents = events
+    .map((event) => ({ event, parsedDate: parseDate(event.date) }))
+    .filter((item) => item.parsedDate !== null)
+    .sort((a, b) => (a.parsedDate as Date).getTime() - (b.parsedDate as Date).getTime());
+
+  const initialDate = datedEvents.length
+    ? new Date(
+        (datedEvents[0].parsedDate as Date).getFullYear(),
+        (datedEvents[0].parsedDate as Date).getMonth(),
+        1,
+      )
+    : new Date();
+
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 4, 1)); // May 2026 by default
+  const [currentDate, setCurrentDate] = useState(initialDate);
 
   const handlePrevMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
@@ -29,8 +66,9 @@ export default function Calendar({ events, title = "Chronologie Académique", su
   };
 
   const handleToday = () => {
-    setCurrentDate(new Date(2026, 4, 1)); // Hardcoded to demo month
-    setSelectedDay(10); // Hardcoded 'today' demo day
+    const today = new Date();
+    setCurrentDate(new Date(today.getFullYear(), today.getMonth(), 1));
+    setSelectedDay(today.getDate());
   };
 
   const monthNames = [
@@ -46,6 +84,22 @@ export default function Calendar({ events, title = "Chronologie Académique", su
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const totalSlots = (firstDayIndex + daysInMonth) > 35 ? 42 : 35;
   const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+  const getEventsForDay = (day: number, monthIndex: number, yearValue: number) =>
+    events.filter((event) => {
+      const parsedDate = parseDate(event.date);
+      if (parsedDate) {
+        return (
+          parsedDate.getDate() === day &&
+          parsedDate.getMonth() === monthIndex &&
+          parsedDate.getFullYear() === yearValue
+        );
+      }
+      return event.dayNumber === day;
+    });
+
+  const selectedDayEvents =
+    selectedDay !== null ? getEventsForDay(selectedDay, month, year) : [];
 
   return (
     <div className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden flex flex-col md:flex-row">
@@ -91,10 +145,15 @@ export default function Calendar({ events, title = "Chronologie Académique", su
             {Array.from({ length: totalSlots }).map((_, i) => {
               const dayNumber = i - firstDayIndex + 1;
               const isCurrentMonth = dayNumber > 0 && dayNumber <= daysInMonth;
-              const isToday = dayNumber === 10 && month === 4 && year === 2026; // Hardcoded demo today
-              
-              // Get events for this specific day (only showing events for the current demo month)
-              const dayEvents = isCurrentMonth && month === 4 && year === 2026 ? events.filter(e => e.dayNumber === dayNumber) : [];
+              const today = new Date();
+              const isToday =
+                dayNumber === today.getDate() &&
+                month === today.getMonth() &&
+                year === today.getFullYear();
+               
+              const dayEvents = isCurrentMonth
+                ? getEventsForDay(dayNumber, month, year)
+                : [];
 
               const isSelected = selectedDay === dayNumber;
 
@@ -150,14 +209,14 @@ export default function Calendar({ events, title = "Chronologie Académique", su
               <div>
                 <div className="text-sm font-extrabold text-slate-800 capitalize">{monthNames[month]} {year}</div>
                 <div className="text-xs font-semibold text-slate-500">
-                  {month === 4 && year === 2026 ? events.filter(e => e.dayNumber === selectedDay).length : 0} événement(s)
+                  {selectedDayEvents.length} événement(s)
                 </div>
               </div>
             </div>
 
             <div className="space-y-3">
-              {month === 4 && year === 2026 && events.filter(e => e.dayNumber === selectedDay).length > 0 ? (
-                events.filter(e => e.dayNumber === selectedDay).map((evt, idx) => {
+              {selectedDayEvents.length > 0 ? (
+                selectedDayEvents.map((evt, idx) => {
                   let style = 'bg-white border-slate-200 text-slate-700';
                   let iconColor = 'text-slate-400';
                   if (evt.type === 'exam') { style = 'bg-amber-50/50 border-amber-200 text-amber-800'; iconColor = 'text-amber-500'; }
