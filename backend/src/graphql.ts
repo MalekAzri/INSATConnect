@@ -8,10 +8,24 @@
 /* tslint:disable */
 /* eslint-disable */
 
+export enum AcademicEventType {
+    DS = "DS",
+    EXAMEN = "EXAMEN",
+    AFFICHAGE = "AFFICHAGE",
+    DELIBERATION = "DELIBERATION",
+    FIN_ANNEE = "FIN_ANNEE"
+}
+
+export enum DocumentCategorie {
+    URGENT = "URGENT",
+    DOCUMENT = "DOCUMENT",
+    PLANNING = "PLANNING"
+}
+
 export class Document {
     id: string;
     titre: string;
-    categorie: string;
+    categorie: DocumentCategorie;
     date: string;
     contenu?: Nullable<string>;
     fichierUrl?: Nullable<string>;
@@ -45,11 +59,11 @@ export class AcademicEvent {
     nom: string;
     dateDebut: string;
     dateFin: string;
-    type: string;
+    type: AcademicEventType;
 }
 
 export abstract class IQuery {
-    abstract documents(categorie?: Nullable<string>): Document[] | Promise<Document[]>;
+    abstract documents(categorie?: Nullable<string>): Nullable<Document>[] | Promise<Nullable<Document>[]>;
 
     abstract document(id: string): Nullable<Document> | Promise<Nullable<Document>>;
 
