@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useUser, UserRole } from "@/context/UserContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -140,6 +140,8 @@ export default function StudentDashboard() {
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [backendCalendarEvents, setBackendCalendarEvents] = useState<CalendarEvent[]>([]);
   const [allFeedPosts, setAllFeedPosts] = useState<Post[]>([]);
+  const [realtimeNotifications, setRealtimeNotifications] = useState<any[]>([]);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   // Custom states for interactivity
   const [commentsState, setCommentsState] = useState<{ [postId: string]: string }>({});
@@ -177,11 +179,61 @@ export default function StudentDashboard() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
+  const loadFeed = useCallback(() => {
     backendFetchJson<BackendPublication[]>("/admin-agent/publications?limit=100")
       .then(data => setAllFeedPosts(Array.isArray(data) ? data.map(toStudentPost) : []))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    loadFeed();
+  }, [loadFeed]);
+
+  useEffect(() => {
+    // 1. Fetch initial history from DB
+    backendFetchJson<any[]>(`/student-agent/notifications/history?role=student&year=${user.year || "GL3"}`)
+      .then(history => {
+        if (Array.isArray(history)) {
+          setRealtimeNotifications(history);
+        }
+      })
+      .catch(console.error);
+
+    // 2. Subscribe to real-time events via SSE
+    const sseUrl = buildBackendUrl(`/student-agent/notifications/stream?role=student&year=${user.year || "GL3"}`);
+    const source = new EventSource(sseUrl);
+
+    const handleSseEvent = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'heartbeat') return;
+
+        if (data.type === 'publication.created') {
+          loadFeed();
+        }
+
+        setRealtimeNotifications((prev) => {
+          if (prev.some((p) => p.id === data.id)) return prev;
+          return [data, ...prev];
+        });
+
+        if (data.message) {
+          showToast(data.message);
+        }
+      } catch (err) {
+        console.error('SSE parse error', err);
+      }
+    };
+
+    source.addEventListener('message', handleSseEvent);
+    source.addEventListener('publication.created', handleSseEvent);
+
+    return () => {
+      source.removeEventListener('message', handleSseEvent);
+      source.removeEventListener('publication.created', handleSseEvent);
+      source.close();
+    };
+  }, [user.year]);
 
   const handleDownload = async (fileUrl: string, fileName: string) => {
     try {
@@ -468,17 +520,43 @@ export default function StudentDashboard() {
           {/* Action Icons right */}
           <div className="flex items-center gap-4">
             
-            {/* Custom Homework Due Notification Badge */}
-            <div className="relative group cursor-pointer">
-              <div className="p-2.5 rounded-2xl hover:bg-slate-50 border border-slate-100 transition-colors flex items-center justify-center text-slate-500">
+            {/* Custom Notification Badge */}
+            <div
+              className="relative cursor-pointer"
+              onMouseEnter={() => setIsNotificationsOpen(true)}
+              onMouseLeave={() => setIsNotificationsOpen(false)}
+            >
+              <div className="p-2.5 rounded-2xl hover:bg-slate-50 border border-slate-100 transition-colors flex items-center justify-center text-slate-500 relative">
                 <Bell className="h-5 w-5" />
-                {unsubmittedHomeworks.length > 0 && (
+                <span className="ml-1 text-xs">{realtimeNotifications.length}</span>
+                {(unsubmittedHomeworks.length > 0 || realtimeNotifications.length > 0) && (
                   <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-orange-500 animate-ping"></span>
                 )}
               </div>
               
               {/* Dropdown notification card */}
-              <div className="absolute right-0 mt-3 w-80 rounded-3xl bg-white border border-slate-100 shadow-2xl p-4 hidden group-hover:block z-50">
+              <div className={`absolute right-0 mt-3 w-80 rounded-3xl bg-white border border-slate-100 shadow-2xl p-4 z-50 ${isNotificationsOpen ? 'block' : 'hidden'}`}>
+                
+                {/* Real-time Notifications */}
+                <h4 className="text-xs font-extrabold text-slate-800 pb-2 border-b border-slate-50">Notifications récentes</h4>
+                <div className="mt-2 mb-4 space-y-2 max-h-48 overflow-y-auto">
+                  {realtimeNotifications.length > 0 ? (
+                    realtimeNotifications.map((notif, idx) => (
+                      <div key={idx} className="p-2 bg-blue-50/50 border border-blue-100 rounded-xl flex gap-2">
+                        <Sparkles className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-800">{notif.message}</p>
+                          <p className="text-[9px] text-blue-600 font-semibold">{new Date(notif.timestamp || Date.now()).toLocaleString("fr-FR")}</p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-slate-400 text-[10px] font-semibold text-center">
+                      Aucune nouvelle notification
+                    </div>
+                  )}
+                </div>
+
                 <h4 className="text-xs font-extrabold text-slate-800 pb-2 border-b border-slate-50">Rappels de travaux</h4>
                 <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
                   {unsubmittedHomeworks.length > 0 ? (

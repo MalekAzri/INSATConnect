@@ -35,3 +35,76 @@ model Message {
   receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
   createdAt  DateTime @default(now())
 }
+
+model Publication {
+  id            String   @id @default(uuid())
+  title         String
+  category      String
+  content       String
+  author        String
+  targetYear    String?
+  fileName      String?
+  filePath      String?
+  fileSizeBytes Int?
+  grades        String?    // Stores serialized array of PublicationGradeLine
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model AcademicCalendarConfig {
+  id                 Int      @id @default(autoincrement())
+  dsRemise           String
+  examRemise         String
+  dsAffichage        String
+  examAffichage      String
+  sem1Deliberation   String
+  sem2Deliberation   String
+  deliberationFinale String
+  s1_ds              String?
+  s1_exam            String?
+  s1_grades_ds       String?
+  s1_publish_ds      String?
+  s1_grades_exam     String?
+  s1_publish_exam    String?
+  s1_delib           String?
+  s2_ds              String?
+  s2_exam            String?
+  s2_grades_ds       String?
+  s2_publish_ds      String?
+  s2_grades_exam     String?
+  s2_publish_exam    String?
+  s2_delib           String?
+  end_year           String?
+  updatedBy          String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model GradeSubmission {
+  id            String    @id @default(uuid())
+  teacherName   String
+  teacherEmail  String?
+  targetYear    String
+  semester      String?
+  title         String
+  summary       String?
+  entries       String    // Stores serialized array of GradeEntry
+  status        String    @default("pending")
+  validatedBy   String?
+  validatedAt   DateTime?
+  publishedBy   String?
+  publishedAt   DateTime?
+  publicationId String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Notification {
+  id         Int      @id @default(autoincrement())
+  type       String
+  message    String
+  role       String
+  targetYear String?
+  data       String?
+  timestamp  DateTime @default(now())
+}

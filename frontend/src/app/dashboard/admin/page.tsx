@@ -1257,10 +1257,23 @@ export default function AdminDashboard() {
                       <p className="text-sm text-slate-500">Vous pouvez modifier les dates en cliquant sur un événement depuis le panneau latéral.</p>
                     </div>
                     <button 
-                      onClick={() => setIsCalendarConfigured(false)}
+                      onClick={() => {
+                        setCalConfig({
+                          s1_ds: "", s1_exam: "",
+                          s1_grades_ds: "", s1_publish_ds: "",
+                          s1_grades_exam: "", s1_publish_exam: "",
+                          s1_delib: "",
+                          s2_ds: "", s2_exam: "",
+                          s2_grades_ds: "", s2_publish_ds: "",
+                          s2_grades_exam: "", s2_publish_exam: "",
+                          s2_delib: "", end_year: ""
+                        });
+                        setCalendarEvents([]);
+                        setIsCalendarConfigured(false);
+                      }}
                       className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors"
                     >
-                      Reconfigurer
+                      Réinitialiser le calendrier
                     </button>
                   </div>
                   

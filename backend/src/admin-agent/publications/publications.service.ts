@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationRole } from '../common/enums/notification-role.enum';
+import { PublicationCategory } from '../common/enums/publication-category.enum';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreatePublicationDto } from './dto/create-publication.dto';
 import { ListPublicationsQueryDto } from './dto/list-publications.query.dto';
@@ -11,33 +11,52 @@ import { Publication } from './entities/publication.entity';
 @Injectable()
 export class PublicationsService {
   constructor(
-    @InjectRepository(Publication)
-    private readonly publicationsRepo: Repository<Publication>,
+    private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
   ) {}
+
+  private mapToEntity(pub: any): Publication {
+    return {
+      id: pub.id,
+      title: pub.title,
+      category: pub.category as PublicationCategory,
+      content: pub.content,
+      author: pub.author,
+      targetYear: pub.targetYear,
+      fileName: pub.fileName,
+      filePath: pub.filePath,
+      fileSizeBytes: pub.fileSizeBytes,
+      grades: pub.grades ? JSON.parse(pub.grades) : null,
+      createdAt: pub.createdAt,
+      updatedAt: pub.updatedAt,
+    };
+  }
 
   async create(
     dto: CreatePublicationDto,
     file?: Express.Multer.File,
   ): Promise<Publication> {
-    const publication = this.publicationsRepo.create({
-      title: dto.title.trim(),
-      category: dto.category,
-      content: dto.content.trim(),
-      author: dto.author?.trim() || 'Scolarité INSAT',
-      targetYear: dto.targetYear?.trim().toUpperCase() || null,
-      fileName: file?.originalname ?? null,
-      filePath: file ? `/uploads/${file.filename}` : null,
-      fileSizeBytes: file?.size ?? null,
-      grades: dto.grades?.length ? dto.grades : null,
+    const publication = await this.prisma.publication.create({
+      data: {
+        title: dto.title.trim(),
+        category: dto.category,
+        content: dto.content.trim(),
+        author: dto.author?.trim() || 'Scolarité INSAT',
+        targetYear: dto.targetYear?.trim().toUpperCase() || null,
+        fileName: file?.originalname ?? null,
+        filePath: file ? `/uploads/${file.filename}` : null,
+        fileSizeBytes: file?.size ?? null,
+        grades: dto.grades?.length ? JSON.stringify(dto.grades) : null,
+      },
     });
 
-    const saved = await this.publicationsRepo.save(publication);
+    const saved = this.mapToEntity(publication);
 
-    this.notificationsService.publish({
+    await this.notificationsService.publish({
       type: 'publication.created',
       role: NotificationRole.ALL,
       message: `Nouvelle publication: ${saved.title}`,
+      targetYear: saved.targetYear,
       data: {
         publicationId: saved.id,
         category: saved.category,
@@ -49,38 +68,48 @@ export class PublicationsService {
   }
 
   async findAll(query: ListPublicationsQueryDto): Promise<Publication[]> {
-    const qb = this.publicationsRepo
-      .createQueryBuilder('publication')
-      .orderBy('publication.createdAt', 'DESC')
-      .skip(query.offset ?? 0)
-      .take(query.limit ?? 50);
+    const where: any = {};
 
     if (query.category) {
-      qb.andWhere('publication.category = :category', { category: query.category });
+      where.category = query.category;
     }
 
     if (query.targetYear) {
-      qb.andWhere(
-        '(publication.targetYear IS NULL OR UPPER(publication.targetYear) = :targetYear)',
-        { targetYear: query.targetYear.trim().toUpperCase() },
-      );
+      where.OR = [
+        { targetYear: null },
+        { targetYear: { equals: query.targetYear.trim().toUpperCase() } },
+      ];
     }
 
     if (query.search) {
-      qb.andWhere('(publication.title LIKE :search OR publication.content LIKE :search)', {
-        search: `%${query.search.trim()}%`,
-      });
+      const search = query.search.trim();
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { title: { contains: search } },
+            { content: { contains: search } },
+          ],
+        },
+      ];
     }
 
-    return qb.getMany();
+    const pubs = await this.prisma.publication.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: query.offset ? Number(query.offset) : 0,
+      take: query.limit ? Number(query.limit) : 50,
+    });
+
+    return pubs.map((p) => this.mapToEntity(p));
   }
 
   async findOne(id: string): Promise<Publication> {
-    const publication = await this.publicationsRepo.findOne({ where: { id } });
+    const publication = await this.prisma.publication.findUnique({ where: { id } });
     if (!publication) {
       throw new NotFoundException(`Publication ${id} introuvable`);
     }
-    return publication;
+    return this.mapToEntity(publication);
   }
 
   async update(
@@ -88,33 +117,40 @@ export class PublicationsService {
     dto: UpdatePublicationDto,
     file?: Express.Multer.File,
   ): Promise<Publication> {
-    const publication = await this.findOne(id);
+    // Verify exists
+    await this.findOne(id);
 
-    if (dto.title !== undefined) publication.title = dto.title.trim();
-    if (dto.category !== undefined) publication.category = dto.category;
-    if (dto.content !== undefined) publication.content = dto.content.trim();
+    const data: any = {};
+    if (dto.title !== undefined) data.title = dto.title.trim();
+    if (dto.category !== undefined) data.category = dto.category;
+    if (dto.content !== undefined) data.content = dto.content.trim();
     if (dto.author !== undefined) {
-      publication.author = dto.author.trim() || 'Scolarité INSAT';
+      data.author = dto.author.trim() || 'Scolarité INSAT';
     }
     if (dto.targetYear !== undefined) {
-      publication.targetYear = dto.targetYear ? dto.targetYear.trim().toUpperCase() : null;
+      data.targetYear = dto.targetYear ? dto.targetYear.trim().toUpperCase() : null;
     }
     if (dto.grades !== undefined) {
-      publication.grades = dto.grades?.length ? dto.grades : null;
+      data.grades = dto.grades?.length ? JSON.stringify(dto.grades) : null;
     }
 
     if (file) {
-      publication.fileName = file.originalname;
-      publication.filePath = `/uploads/${file.filename}`;
-      publication.fileSizeBytes = file.size;
+      data.fileName = file.originalname;
+      data.filePath = `/uploads/${file.filename}`;
+      data.fileSizeBytes = file.size;
     }
 
-    return this.publicationsRepo.save(publication);
+    const updated = await this.prisma.publication.update({
+      where: { id },
+      data,
+    });
+
+    return this.mapToEntity(updated);
   }
 
   async remove(id: string): Promise<{ deleted: boolean; id: string }> {
-    const publication = await this.findOne(id);
-    await this.publicationsRepo.remove(publication);
+    await this.findOne(id);
+    await this.prisma.publication.delete({ where: { id } });
     return { deleted: true, id };
   }
 }
