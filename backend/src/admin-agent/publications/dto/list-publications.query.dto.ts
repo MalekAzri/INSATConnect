@@ -1,4 +1,12 @@
-import { IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { PublicationCategory } from '../../common/enums/publication-category.enum';
 
 export class ListPublicationsQueryDto {

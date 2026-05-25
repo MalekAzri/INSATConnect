@@ -5,6 +5,11 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { PublicationsModule } from './publications/publications.module';
 
 @Module({
-  imports: [NotificationsModule, PublicationsModule, CalendarModule, GradesModule],
+  imports: [
+    NotificationsModule,
+    PublicationsModule,
+    CalendarModule,
+    GradesModule,
+  ],
 })
 export class AdminAgentModule {}

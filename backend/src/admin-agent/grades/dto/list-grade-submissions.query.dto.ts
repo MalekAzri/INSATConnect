@@ -1,4 +1,12 @@
-import { IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { GradeSubmissionStatus } from '../../common/enums/grade-submission-status.enum';
 
 export class ListGradeSubmissionsQueryDto {

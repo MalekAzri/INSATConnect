@@ -60,9 +60,12 @@ export class CreatePublicationDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => PublicationGradeLineDto)
-  @Transform(({ value }) => {
-    if (typeof value !== 'string') return value;
+  @Transform(({ value }: { value: unknown }) => {
+    if (typeof value !== 'string') {
+      return value;
+    }
     try {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
       return JSON.parse(value);
     } catch {
       return value;

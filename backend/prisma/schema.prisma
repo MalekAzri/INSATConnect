@@ -12,7 +12,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
 model User {
   id               Int       @id @default(autoincrement())
   email            String    @unique
@@ -25,12 +24,12 @@ model User {
 }
 
 model Message {
-  id         Int      @id @default(autoincrement())
-  content    String
-  
-  senderId   Int
-  sender     User     @relation("SentMessages", fields: [senderId], references: [id])
-  
+  id      Int    @id @default(autoincrement())
+  content String
+
+  senderId Int
+  sender   User @relation("SentMessages", fields: [senderId], references: [id])
+
   receiverId Int
   receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
   createdAt  DateTime @default(now())
@@ -107,4 +106,33 @@ model Notification {
   targetYear String?
   data       String?
   timestamp  DateTime @default(now())
+}
+
+
+model Room {
+  id         String @id @default(cuid())
+  name       String
+  targetYear String
+  teacherId  String
+  posts     Post[]
+  homeworks Homework[]
+}
+
+model Post {
+  id      String @id @default(cuid())
+  content String
+  type    String @default("announcement")
+
+  roomId String
+  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
+
+model Homework {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  deadline    DateTime
+
+  roomId String
+  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
 }

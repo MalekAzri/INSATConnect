@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import { PrismaService } from '../prisma/prisma.service';
+import { AcademicDate } from '../dates/entities/academic-date.entity';
 import { WebhookService } from '../webhook/webhook.service';
 
 @Injectable()
@@ -9,7 +11,8 @@ export class CheckerService {
   private readonly logger = new Logger(CheckerService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    @InjectRepository(AcademicDate)
+    private readonly repo: Repository<AcademicDate>,
     private readonly webhookService: WebhookService,
     private readonly config: ConfigService,
   ) {}
@@ -23,9 +26,7 @@ export class CheckerService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const dates = await this.prisma.academicDate.findMany({
-      where: { notificationSent: false },
-    });
+    const dates = await this.repo.find({ where: { notificationSent: false } });
 
     for (const entry of dates) {
       const deadline = new Date(entry.date);
@@ -45,13 +46,10 @@ export class CheckerService {
         });
 
         // Marquer comme notifié pour ne pas renvoyer chaque jour
-        await this.prisma.academicDate.update({
-          where: { id: entry.id },
-          data: { notificationSent: true },
-        });
+        await this.repo.update(entry.id, { notificationSent: true });
       }
     }
 
     this.logger.log('Verification terminee');
   }
-}
+}

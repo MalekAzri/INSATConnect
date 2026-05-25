@@ -5,7 +5,7 @@ import {
   ConnectedSocket,
   WebSocketServer,
   OnGatewayConnection,
-  OnGatewayDisconnect
+  OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { MessagesService } from '../messages/messages.service';
@@ -34,7 +34,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('register')
-  handleRegister(@MessageBody() userId: number, @ConnectedSocket() client: Socket): void {
+  handleRegister(
+    @MessageBody() userId: number,
+    @ConnectedSocket() client: Socket,
+  ): void {
     const numId = Number(userId);
     const socketId = client.id;
     console.log(`User ${numId} registered with socket ${socketId}`);
@@ -43,8 +46,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('sendMessage')
   async handleSendMessage(
-    @MessageBody() payload: { senderId: number; receiverId: number; content: string },
-    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    payload: {
+      senderId: number;
+      receiverId: number;
+      content: string;
+    },
   ) {
     const senderId = Number(payload.senderId);
     const receiverId = Number(payload.receiverId);

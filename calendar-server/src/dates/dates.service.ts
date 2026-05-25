@@ -1,10 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { AcademicDate } from './entities/academic-date.entity';
 import { SetDatesDto } from './dto/set-date.dto';
 
 @Injectable()
 export class DatesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @InjectRepository(AcademicDate)
+    private readonly repo: Repository<AcademicDate>,
+  ) {}
 
   async setDates(dto: SetDatesDto): Promise<void> {
     // Les 7 dates avec leur rôle cible
@@ -19,15 +24,14 @@ export class DatesService {
     ];
 
     for (const entry of entries) {
-      await this.prisma.academicDate.upsert({
-        where: { key: entry.key },
-        update: { ...entry, notificationSent: false },
-        create: { ...entry, notificationSent: false },
-      });
+      await this.repo.upsert(
+        { ...entry, notificationSent: false },
+        { conflictPaths: ['key'] },
+      );
     }
   }
 
-  async getAllDates() {
-    return this.prisma.academicDate.findMany();
+  async getAllDates(): Promise<AcademicDate[]> {
+    return this.repo.find();
   }
 }

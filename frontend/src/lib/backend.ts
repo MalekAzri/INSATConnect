@@ -63,3 +63,26 @@ export async function backendFetchJson<T>(path: string, init?: RequestInit): Pro
     throw new Error(`Réponse backend non-JSON reçue sur ${path}`);
   }
 }
+
+export async function backendGraphQLFetchJson<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
+  const response = await backendFetch('/graphql', {
+    method: 'POST',
+    body: JSON.stringify({ query, variables }),
+  });
+
+  let json: any;
+  try {
+    json = await response.json();
+  } catch (err) {
+    throw new Error(`Réponse GraphQL invalide reçue du backend: ${String(err)}`);
+  }
+
+  if (!response.ok || json.errors) {
+    const message = json.errors
+      ? json.errors.map((error: any) => error.message).join(', ')
+      : `${response.status} ${response.statusText}`;
+    throw new Error(message);
+  }
+
+  return json.data as T;
+}

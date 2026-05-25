@@ -1,0 +1,88 @@
+enum AcademicEventType {
+  DS
+  EXAMEN
+  AFFICHAGE
+  DELIBERATION
+  FIN_ANNEE
+}
+
+enum DocumentCategorie {
+  URGENT
+  DOCUMENT
+  PLANNING
+}
+
+type Document {
+  id: ID!
+  titre: String!
+  categorie: DocumentCategorie!
+  date: String!
+  # Champs chargés uniquement si demandés (Anti-overfetching)
+  contenu: String
+  fichierUrl: String
+}
+
+type Timetable {
+  id: ID!
+  promo: String!
+  semestre: Int!
+  emploisDuTempsUrl: String!
+  datePublication: String!
+}
+
+type GradeLine {
+  matiere: String!
+  ds: String!
+  examen: String!
+  moyenne: String!
+}
+
+type Grade {
+  id: ID!
+  etudiantId: Int!
+  semestre: Int!
+  details: [GradeLine!]!
+  datePublication: String!
+}
+
+type AcademicEvent {
+  id: ID!
+  nom: String!
+  dateDebut: String!
+  dateFin: String!
+  type: AcademicEventType!
+}
+
+type Publication {
+  id: ID!
+  titre: String!
+  categorie: String!
+  contenu: String!
+  date: String!
+  auteur: String!
+  targetYear: String
+  fichierUrl: String
+  fileName: String
+  fileSize: String
+}
+
+type Query {
+  # Liste des publications ciblées pour l'étudiant
+  publications(targetYear: String): [Publication!]!
+
+  # Liste allégée des documents
+  documents(categorie: String): [Document]!
+  
+  # Détails complets d'un document spécifique
+  document(id: ID!): Document
+  
+  # Emploi du temps (filtre automatique via contexte)
+  # retourne null si aucun EDT n'est publié pour la promo
+  emploiDuTemps: Timetable
+  
+  # Notes de l'étudiant (filtre automatique via contexte)
+  mesNotes: [Grade!]!
+  
+  # Calendrier académique (commun)
+  calendrierAcademique: [AcademicEvent!]!
+}

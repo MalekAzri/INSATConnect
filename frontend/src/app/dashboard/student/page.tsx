@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CalendarGrid, { CalendarEvent } from "@/components/Calendar";
 import { useChat } from "@/hooks/useChat";
-import { backendFetchJson, buildBackendUrl } from "@/lib/backend";
+import { backendFetchJson, backendGraphQLFetchJson, buildBackendUrl } from "@/lib/backend";
+import { GET_PUBLICATIONS, GET_ACADEMIC_CALENDAR } from "@/graphql/queries";
 import { 
   Bell, 
   Menu, 
@@ -47,10 +48,38 @@ interface Post {
 }
 
 interface BackendPublication {
-  id: string; title: string; category: string; content: string; author: string;
-  targetYear?: string | null; fileName?: string | null; fileSizeBytes?: number | null;
-  filePath?: string | null; createdAt: string;
+  id: string;
+  title: string;
+  category: string;
+  content: string;
+  author: string;
+  targetYear?: string | null;
+  fileName?: string | null;
+  fileSizeBytes?: number | null;
+  filePath?: string | null;
+  createdAt: string;
   grades?: { subject: string; ds: string; exam: string; avg: string }[] | null;
+}
+
+interface GraphqlPublication {
+  id: string;
+  titre: string;
+  categorie: string;
+  contenu: string;
+  date: string;
+  auteur: string;
+  targetYear?: string | null;
+  fichierUrl?: string | null;
+  fileName?: string | null;
+  fileSize?: string | null;
+}
+
+interface GraphqlAcademicEvent {
+  id: string;
+  nom: string;
+  dateDebut?: string | null;
+  dateFin?: string | null;
+  type: 'DS' | 'EXAMEN' | 'AFFICHAGE' | 'DELIBERATION' | 'FIN_ANNEE';
 }
 
 const formatPostDate = (iso: string) => {
@@ -60,12 +89,30 @@ const formatPostDate = (iso: string) => {
 };
 
 const toStudentPost = (p: BackendPublication): Post => ({
-  id: p.id, title: p.title, category: p.category as Post["category"],
-  content: p.content, date: formatPostDate(p.createdAt), author: p.author,
-  targetYear: p.targetYear ?? undefined, fileName: p.fileName ?? undefined,
+  id: p.id,
+  title: p.title,
+  category: p.category as Post["category"],
+  content: p.content,
+  date: formatPostDate(p.createdAt),
+  author: p.author,
+  targetYear: p.targetYear ?? undefined,
+  fileName: p.fileName ?? undefined,
   fileSize: p.fileSizeBytes ? `${(p.fileSizeBytes / (1024 * 1024)).toFixed(2)} Mo` : undefined,
   fileUrl: p.filePath ? buildBackendUrl(p.filePath) : undefined,
   grades: p.grades ?? undefined,
+});
+
+const toStudentPostFromGraphql = (p: GraphqlPublication): Post => ({
+  id: p.id,
+  title: p.titre,
+  category: p.categorie as Post["category"],
+  content: p.contenu,
+  date: formatPostDate(p.date),
+  author: p.auteur,
+  targetYear: p.targetYear ?? undefined,
+  fileName: p.fileName ?? undefined,
+  fileSize: p.fileSize ?? undefined,
+  fileUrl: p.fichierUrl ?? undefined,
 });
 
 interface RoomPost {
@@ -101,36 +148,30 @@ interface ChatMessage {
   time: string;
 }
 
-interface BackendCalendarConfig {
-  dsRemise?: string; examRemise?: string; dsAffichage?: string; examAffichage?: string;
-  sem1Deliberation?: string; sem2Deliberation?: string; deliberationFinale?: string;
-  s1_ds?: string | null; s1_exam?: string | null; s1_grades_ds?: string | null;
-  s1_publish_ds?: string | null; s1_grades_exam?: string | null; s1_publish_exam?: string | null;
-  s1_delib?: string | null; s2_ds?: string | null; s2_exam?: string | null;
-  s2_grades_ds?: string | null; s2_publish_ds?: string | null; s2_grades_exam?: string | null;
-  s2_publish_exam?: string | null; s2_delib?: string | null; end_year?: string | null;
-}
+const mapAcademicEventsToCalendarEvents = (events: GraphqlAcademicEvent[]): CalendarEvent[] => {
+  const calendarEvents: CalendarEvent[] = [];
 
-const buildStudentCalendarEvents = (cfg: BackendCalendarConfig): CalendarEvent[] => {
-  const events: CalendarEvent[] = [];
-  const add = (dateStr: string | null | undefined, type: CalendarEvent["type"], title: string) => {
-    if (!dateStr) return;
-    const d = new Date(dateStr);
-    if (Number.isNaN(d.getTime())) return;
-    events.push({ dayNumber: d.getDate(), type, title, date: dateStr });
-  };
-  add(cfg.s1_ds ?? cfg.dsRemise, "exam", "DS S1");
-  add(cfg.s1_publish_ds ?? cfg.dsAffichage, "deadline", "Affichage DS S1");
-  add(cfg.s1_exam ?? cfg.examRemise, "exam", "Examens S1");
-  add(cfg.s1_publish_exam ?? cfg.examAffichage, "deadline", "Affichage Examens S1");
-  add(cfg.s1_delib ?? cfg.sem1Deliberation, "deadline", "Délibérations S1");
-  add(cfg.s2_ds, "exam", "DS S2");
-  add(cfg.s2_publish_ds, "deadline", "Affichage DS S2");
-  add(cfg.s2_exam, "exam", "Examens S2");
-  add(cfg.s2_publish_exam, "deadline", "Affichage Examens S2");
-  add(cfg.s2_delib ?? cfg.sem2Deliberation, "deadline", "Délibérations S2");
-  add(cfg.end_year ?? cfg.deliberationFinale, "deadline", "Délibérations fin d'année");
-  return events;
+  for (const event of events) {
+    const date = event.dateDebut || event.dateFin;
+    if (!date) continue;
+
+    const d = new Date(date);
+    if (Number.isNaN(d.getTime())) continue;
+
+    const type: CalendarEvent["type"] =
+      event.type === 'DS' || event.type === 'EXAMEN'
+        ? 'exam'
+        : 'deadline';
+
+    calendarEvents.push({
+      dayNumber: d.getDate(),
+      type,
+      title: event.nom,
+      date,
+    });
+  }
+
+  return calendarEvents;
 };
 
 export default function StudentDashboard() {
@@ -174,16 +215,24 @@ export default function StudentDashboard() {
   }, [chatMessages]);
 
   useEffect(() => {
-    backendFetchJson<BackendCalendarConfig>("/admin-agent/calendar")
-      .then(config => { if (config) setBackendCalendarEvents(buildStudentCalendarEvents(config)); })
+    backendGraphQLFetchJson<{ calendrierAcademique: GraphqlAcademicEvent[] }>(GET_ACADEMIC_CALENDAR)
+      .then(data => {
+        if (Array.isArray(data?.calendrierAcademique)) {
+          setBackendCalendarEvents(mapAcademicEventsToCalendarEvents(data.calendrierAcademique));
+        }
+      })
       .catch(() => {});
   }, []);
 
   const loadFeed = useCallback(() => {
-    backendFetchJson<BackendPublication[]>("/admin-agent/publications?limit=100")
-      .then(data => setAllFeedPosts(Array.isArray(data) ? data.map(toStudentPost) : []))
+    backendGraphQLFetchJson<{ publications: GraphqlPublication[] }>(GET_PUBLICATIONS, {
+      targetYear: user.year || "GL3",
+    })
+      .then(data => {
+        setAllFeedPosts(Array.isArray(data?.publications) ? data.publications.map(toStudentPostFromGraphql) : []);
+      })
       .catch(() => {});
-  }, []);
+  }, [user.year]);
 
   useEffect(() => {
     loadFeed();
