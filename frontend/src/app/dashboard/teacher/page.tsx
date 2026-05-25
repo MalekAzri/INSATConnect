@@ -6,29 +6,22 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CalendarGrid, { CalendarEvent } from "@/components/Calendar";
 import { backendFetchJson } from "@/lib/backend";
-import { 
-  Bell, 
-  Menu, 
-  Download, 
-  FileText, 
-  MessageSquare, 
-  Calendar, 
-  LogOut, 
-  Clock, 
-  CheckCircle2, 
-  AlertTriangle,
+import {
+  Download,
+  FileText,
+  Calendar,
+  LogOut,
+  CheckCircle2,
   FileSpreadsheet,
   Sparkles,
   BookOpen,
   Plus,
-  Users,
-  Image as ImageIcon,
   SendHorizontal,
   ChevronLeft,
   X
 } from "lucide-react";
 
-// Types for Mock Data
+// Types
 interface RoomPost {
   id: string;
   author: string;
@@ -344,47 +337,7 @@ export default function TeacherDashboard() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // MOCK DATA: Teacher's Rooms
-  const [rooms, setRooms] = useState<Room[]>([
-    {
-      id: "r1",
-      name: "Compilation & Automates",
-      subject: "Informatique Théorique",
-      bgGradient: "from-blue-500 to-indigo-600",
-      targetYear: "GL3",
-      posts: [
-        {
-          id: "p1",
-          author: "Dr. Mohamed Slim",
-          avatar: "MS",
-          date: "Aujourd'hui, 09:00",
-          content: "Bonjour à tous. Le support de cours du Chapitre 3 est en ligne.",
-          type: "document",
-          fileName: "Chapitre3_AnalyseSyntaxique.pdf",
-          fileSize: "2.1 Mo",
-          isMe: true
-        }
-      ],
-      homeworks: [
-        {
-          id: "hw1",
-          title: "Analyseur Lexical en Lex/Flex",
-          description: "Écrire un analyseur syntaxique pour un sous-ensemble simple de langage C.",
-          deadline: "25 Mai 2026",
-          submissionsCount: 14
-        }
-      ]
-    },
-    {
-      id: "r2",
-      name: "Conception Orientée Objet",
-      subject: "Génie Logiciel",
-      bgGradient: "from-teal-500 to-emerald-600",
-      targetYear: "GL3",
-      posts: [],
-      homeworks: []
-    }
-  ]);
+  const [rooms, setRooms] = useState<Room[]>([]);
 
   const selectedRoom = rooms.find(r => r.id === selectedRoomId);
 
@@ -465,7 +418,7 @@ export default function TeacherDashboard() {
     };
 
     void loadCalendar();
-  }, []);
+  }, [activeTab]);
 
   // Room Creation Form State
   const [newRoomName, setNewRoomName] = useState("");

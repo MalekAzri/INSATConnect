@@ -1,7 +1,7 @@
-import { 
-  WebSocketGateway, 
-  SubscribeMessage, 
-  MessageBody, 
+import {
+  WebSocketGateway,
+  SubscribeMessage,
+  MessageBody,
   ConnectedSocket,
   WebSocketServer,
   OnGatewayConnection,
@@ -13,23 +13,18 @@ import { MessagesService } from '../messages/messages.service';
 @WebSocketGateway({ cors: true })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
-  server: Server;
+  server!: Server;
 
-  // We can store a map of userId -> socketId if we want to send direct messages
-  // Since authentication is mocked, users might send their ID upon connection
   private userSockets = new Map<number, string>();
 
   constructor(private readonly messagesService: MessagesService) {}
 
   handleConnection(client: Socket) {
-    // Usually, you would get the user ID from the JWT token here
-    // For now, we wait for an explicit "register" event to map userId to socketId
     console.log(`Client connected: ${client.id}`);
   }
 
   handleDisconnect(client: Socket) {
     console.log(`Client disconnected: ${client.id}`);
-    // Remove the socket from our mapping
     for (const [userId, socketId] of this.userSockets.entries()) {
       if (socketId === client.id) {
         this.userSockets.delete(userId);
@@ -39,9 +34,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('register')
-  handleRegister(@MessageBody() userId: number, @ConnectedSocket() client: Socket) {
-    console.log(`User ${userId} registered with socket ${client.id}`);
-    this.userSockets.set(userId, client.id);
+  handleRegister(@MessageBody() userId: number, @ConnectedSocket() client: Socket): void {
+    const numId = Number(userId);
+    const socketId = client.id;
+    console.log(`User ${numId} registered with socket ${socketId}`);
+    this.userSockets.set(numId, socketId);
   }
 
   @SubscribeMessage('sendMessage')
@@ -49,20 +46,25 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() payload: { senderId: number; receiverId: number; content: string },
     @ConnectedSocket() client: Socket,
   ) {
-    // 1. Save message to database
+    const senderId = Number(payload.senderId);
+    const receiverId = Number(payload.receiverId);
+
     const savedMessage = await this.messagesService.createMessage({
-      senderId: payload.senderId,
-      receiverId: payload.receiverId,
+      senderId,
+      receiverId,
       content: payload.content,
     });
 
-    // 2. Emit the message to the receiver if they are connected
-    const receiverSocketId = this.userSockets.get(payload.receiverId);
+    // Emit to receiver
+    const receiverSocketId = this.userSockets.get(receiverId);
     if (receiverSocketId) {
       this.server.to(receiverSocketId).emit('newMessage', savedMessage);
     }
 
-    // 3. Optionally emit back to sender (for acknowledgment)
-    return savedMessage; 
+    // Emit back to sender to replace optimistic message with real one
+    const senderSocketId = this.userSockets.get(senderId);
+    if (senderSocketId) {
+      this.server.to(senderSocketId).emit('newMessage', savedMessage);
+    }
   }
 }

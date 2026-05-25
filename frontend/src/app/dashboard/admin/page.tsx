@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CalendarGrid, { CalendarEvent } from "@/components/Calendar";
 import { useChat, BackendMessage, ConversationSummary } from "@/hooks/useChat";
+import { backendFetchJson, buildBackendUrl } from "@/lib/backend";
 import { 
   Bell, 
   Menu, 

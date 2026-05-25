@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 
-const BACKEND_URL = "http://localhost:3000";
+const BACKEND_URL = "http://localhost:3001";
 
 export interface BackendMessage {
   id: number;
@@ -78,7 +78,7 @@ export function useChat({ userId, otherUserId }: UseChatOptions) {
     try {
       const res = await fetch(`${BACKEND_URL}/messages/conversation/${user1Id}/${user2Id}`);
       const data = await res.json();
-      setMessages(data);
+      setMessages(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Erreur chargement conversation:", err);
     } finally {
@@ -91,7 +91,7 @@ export function useChat({ userId, otherUserId }: UseChatOptions) {
     try {
       const res = await fetch(`${BACKEND_URL}/messages/list/${userId}`);
       const data = await res.json();
-      setConversations(data);
+      setConversations(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Erreur chargement liste conversations:", err);
     }

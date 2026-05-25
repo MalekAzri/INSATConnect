@@ -22,11 +22,24 @@ export class CalendarSyncService {
         examAffichage: config.examAffichage,
         sem1Deliberation: config.sem1Deliberation,
         sem2Deliberation: config.sem2Deliberation,
-        DeliberationFinale: config.deliberationFinale,
+        deliberationFinale: config.deliberationFinale,
+        s1_ds: config.s1_ds,
+        s1_exam: config.s1_exam,
+        s1_grades_ds: config.s1_grades_ds,
+        s1_publish_ds: config.s1_publish_ds,
+        s1_grades_exam: config.s1_grades_exam,
+        s1_publish_exam: config.s1_publish_exam,
+        s1_delib: config.s1_delib,
+        s2_ds: config.s2_ds,
+        s2_exam: config.s2_exam,
+        s2_grades_ds: config.s2_grades_ds,
+        s2_publish_ds: config.s2_publish_ds,
+        s2_grades_exam: config.s2_grades_exam,
+        s2_publish_exam: config.s2_publish_exam,
+        s2_delib: config.s2_delib,
+        end_year: config.end_year,
       },
-      {
-        timeout: 4_000,
-      },
+      { timeout: 4_000 },
     );
   }
 }

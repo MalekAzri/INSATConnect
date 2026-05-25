@@ -1,10 +1,7 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
-import { PrismaLibSql } from '@prisma/adapter-libsql';
 
-const url = process.env.DATABASE_URL || 'file:./dev.db';
-const adapter = new PrismaLibSql({ url });
-const prisma = new PrismaClient({ adapter } as any);
+const prisma = new PrismaClient();
 
 async function main() {
   // Create admin user (ID 1)
@@ -35,6 +32,20 @@ async function main() {
     },
   });
   console.log('Étudiant créé:', student);
+
+  // Create teacher user (ID 3)
+  const teacher = await prisma.user.upsert({
+    where: { email: 'm.slim@insat.u-cartago.tn' },
+    update: {},
+    create: {
+      id: 3,
+      email: 'm.slim@insat.u-cartago.tn',
+      password: 'teacher123',
+      name: 'Dr. Mohamed Slim',
+      role: 'teacher',
+    },
+  });
+  console.log('Enseignant créé:', teacher);
 }
 
 main()

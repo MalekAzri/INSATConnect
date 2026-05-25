@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CalendarGrid, { CalendarEvent } from "@/components/Calendar";
 import { useChat } from "@/hooks/useChat";
+import { backendFetchJson, buildBackendUrl } from "@/lib/backend";
 import { 
   Bell, 
   Menu, 
@@ -30,7 +31,7 @@ import {
   SendHorizontal
 } from "lucide-react";
 
-// Types for Mock Data
+// Types
 interface Post {
   id: string;
   title: string;
@@ -41,8 +42,29 @@ interface Post {
   targetYear?: string; // e.g. "GL3"
   fileName?: string;
   fileSize?: string;
+  fileUrl?: string;
   grades?: { subject: string; ds: string; exam: string; avg: string }[];
 }
+
+interface BackendPublication {
+  id: string; title: string; category: string; content: string; author: string;
+  targetYear?: string | null; fileName?: string | null; fileSizeBytes?: number | null;
+  filePath?: string | null; createdAt: string;
+}
+
+const formatPostDate = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "Date inconnue";
+  return d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+};
+
+const toStudentPost = (p: BackendPublication): Post => ({
+  id: p.id, title: p.title, category: p.category as Post["category"],
+  content: p.content, date: formatPostDate(p.createdAt), author: p.author,
+  targetYear: p.targetYear ?? undefined, fileName: p.fileName ?? undefined,
+  fileSize: p.fileSizeBytes ? `${(p.fileSizeBytes / (1024 * 1024)).toFixed(2)} Mo` : undefined,
+  fileUrl: p.filePath ? buildBackendUrl(p.filePath) : undefined,
+});
 
 interface RoomPost {
   id: string;
@@ -77,12 +99,46 @@ interface ChatMessage {
   time: string;
 }
 
+interface BackendCalendarConfig {
+  dsRemise?: string; examRemise?: string; dsAffichage?: string; examAffichage?: string;
+  sem1Deliberation?: string; sem2Deliberation?: string; deliberationFinale?: string;
+  s1_ds?: string | null; s1_exam?: string | null; s1_grades_ds?: string | null;
+  s1_publish_ds?: string | null; s1_grades_exam?: string | null; s1_publish_exam?: string | null;
+  s1_delib?: string | null; s2_ds?: string | null; s2_exam?: string | null;
+  s2_grades_ds?: string | null; s2_publish_ds?: string | null; s2_grades_exam?: string | null;
+  s2_publish_exam?: string | null; s2_delib?: string | null; end_year?: string | null;
+}
+
+const buildStudentCalendarEvents = (cfg: BackendCalendarConfig): CalendarEvent[] => {
+  const events: CalendarEvent[] = [];
+  const add = (dateStr: string | null | undefined, type: CalendarEvent["type"], title: string) => {
+    if (!dateStr) return;
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return;
+    events.push({ dayNumber: d.getDate(), type, title, date: dateStr });
+  };
+  add(cfg.s1_ds ?? cfg.dsRemise, "exam", "DS S1");
+  add(cfg.s1_publish_ds ?? cfg.dsAffichage, "deadline", "Affichage DS S1");
+  add(cfg.s1_exam ?? cfg.examRemise, "exam", "Examens S1");
+  add(cfg.s1_publish_exam ?? cfg.examAffichage, "deadline", "Affichage Examens S1");
+  add(cfg.s1_delib ?? cfg.sem1Deliberation, "deadline", "Délibérations S1");
+  add(cfg.s2_ds, "exam", "DS S2");
+  add(cfg.s2_publish_ds, "deadline", "Affichage DS S2");
+  add(cfg.s2_exam, "exam", "Examens S2");
+  add(cfg.s2_publish_exam, "deadline", "Affichage Examens S2");
+  add(cfg.s2_delib ?? cfg.sem2Deliberation, "deadline", "Délibérations S2");
+  add(cfg.end_year ?? cfg.deliberationFinale, "deadline", "Délibérations fin d'année");
+  return events;
+};
+
 export default function StudentDashboard() {
   const router = useRouter();
   const { user, logout, updateYear, login } = useUser();
   const [activeTab, setActiveTab] = useState<"feed" | "chat" | "rooms" | "calendar">("feed");
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
-  
+  const [backendCalendarEvents, setBackendCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [allFeedPosts, setAllFeedPosts] = useState<Post[]>([]);
+
   // Custom states for interactivity
   const [commentsState, setCommentsState] = useState<{ [postId: string]: string }>({});
   const [newCommentVal, setNewCommentVal] = useState("");
@@ -91,7 +147,7 @@ export default function StudentDashboard() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   
   // Chat States - connected to real backend
-  const ADMIN_USER_ID = 1; // Simulated admin ID
+  const ADMIN_USER_ID = 1; // admin user ID as set by the DB seed
   const { messages: chatMessages, sendMessage: sendChatMessage, isConnected: isChatConnected, isLoading: isChatLoading } = useChat({
     userId: user.id,
     otherUserId: ADMIN_USER_ID,
@@ -112,6 +168,35 @@ export default function StudentDashboard() {
       chatEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [chatMessages]);
+
+  useEffect(() => {
+    backendFetchJson<BackendCalendarConfig>("/admin-agent/calendar")
+      .then(config => { if (config) setBackendCalendarEvents(buildStudentCalendarEvents(config)); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    backendFetchJson<BackendPublication[]>("/admin-agent/publications?limit=100")
+      .then(data => setAllFeedPosts(Array.isArray(data) ? data.map(toStudentPost) : []))
+      .catch(() => {});
+  }, []);
+
+  const handleDownload = async (fileUrl: string, fileName: string) => {
+    try {
+      const res = await fetch(fileUrl);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      showToast("Impossible de télécharger le fichier.");
+    }
+  };
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -136,116 +221,6 @@ export default function StudentDashboard() {
     setSelectedRoomId(null);
   };
 
-  // MOCK DATA: Feed Posts published by Admin
-  const allFeedPosts: Post[] = [
-    {
-      id: "p1",
-      title: "URGENT: Tolérance Zéro Contre la Fraude aux Examens",
-      category: "urgent",
-      content: "Il est rappelé à tous les étudiants de l'INSAT que toute tentative de fraude ou utilisation de matériel non autorisé (téléphones connectés, écouteurs, documents non signés) durant les devoirs surveillés entraînera la traduction immédiate devant le conseil de discipline de l'université. Nous comptons sur votre rigueur académique.",
-      date: "Il y a 2 heures",
-      author: "Direction des Études"
-    },
-    {
-      id: "p2",
-      title: "Fiche d'Inscription Administrative 2026-2027",
-      category: "document",
-      content: "Veuillez trouver ci-joint le formulaire officiel de réinscription administrative pour la prochaine année universitaire. Le dossier complet doit être déposé au guichet de la scolarité avant le 15 juin 2026.",
-      date: "Hier",
-      author: "Bureau Scolarité",
-      fileName: "Formulaire_Inscription_INSAT_2026.pdf",
-      fileSize: "2.4 Mo"
-    },
-    {
-      id: "p3",
-      title: "Circulaire de Demande de Relevé de Notes Officiel",
-      category: "document",
-      content: "Pour toute demande de relevé de notes de semestres précédents, veuillez télécharger et remplir ce formulaire, puis l'envoyer par mail ou le remettre directement au guichet du service scolarité.",
-      date: "Il y a 2 jours",
-      author: "Service Scolarité",
-      fileName: "Demande_Releve_Notes_INSAT.pdf",
-      fileSize: "850 Ko"
-    },
-    {
-      id: "p_gl3",
-      title: "Affichage des Notes - Génie Logiciel GL3 (Semestre 1)",
-      category: "notes",
-      content: "Les notes du premier semestre (Session Principale) pour la filière GL3 sont désormais disponibles. Félicitations à toute la promotion pour le taux de réussite exceptionnel de cette année !",
-      date: "Il y a 3 jours",
-      author: "Service des Examens",
-      targetYear: "GL3",
-      grades: [
-        { subject: "Conception Orientée Objet & Design Patterns", ds: "14.5", exam: "13.0", avg: "13.6" },
-        { subject: "Théorie de la Compilation & Automates", ds: "12.0", exam: "11.5", avg: "11.7" },
-        { subject: "Réseaux et Protocoles IP", ds: "15.0", exam: "14.0", avg: "14.4" },
-        { subject: "Développement Web & APIs", ds: "16.5", exam: "15.5", avg: "15.9" }
-      ]
-    },
-    {
-      id: "p_gl4",
-      title: "Affichage des Notes - Spécialité GL4 (Semestre 1)",
-      category: "notes",
-      content: "Le jury d'examen a délibéré et validé l'affichage des notes du S1 pour les étudiants de GL4 (Génie Logiciel 4ème année). Les relevés provisoires peuvent être demandés en ligne.",
-      date: "Il y a 3 jours",
-      author: "Service des Examens",
-      targetYear: "GL4",
-      grades: [
-        { subject: "Architecture Logicielles Avancées (Microservices)", ds: "16.0", exam: "15.0", avg: "15.4" },
-        { subject: "DevOps & Cloud Computing", ds: "15.5", exam: "14.5", avg: "14.9" },
-        { subject: "Sécurité & Cryptographie Appliquée", ds: "13.0", exam: "12.5", avg: "12.7" }
-      ]
-    },
-    {
-      id: "p_mpi",
-      title: "Affichage des Notes - Cycle Préparatoire MPI (Semestre 1)",
-      category: "notes",
-      content: "Les résultats des examens du Semestre 1 pour les classes MPI (Maths-Physique-Informatique) sont affichés. Veuillez consulter le récapitulatif des moyennes générales.",
-      date: "Il y a 3 jours",
-      author: "Service des Examens",
-      targetYear: "MPI",
-      grades: [
-        { subject: "Analyse Réelle & Limites", ds: "10.5", exam: "09.5", avg: "09.9" },
-        { subject: "Algèbre Linéaire & Espaces Vectoriels", ds: "11.0", exam: "10.0", avg: "10.4" },
-        { subject: "Physique Générale: Optique & Mécanique", ds: "12.5", exam: "11.0", avg: "11.6" }
-      ]
-    },
-    {
-      id: "p_iia",
-      title: "Affichage des Notes - IIA (Informatique Industrielle & Auto.)",
-      category: "notes",
-      content: "Les notes de la session de DS et Examens S1 pour la filière IIA sont en ligne. Les consultations de copies auront lieu le lundi matin.",
-      date: "Il y a 4 jours",
-      author: "Service des Examens",
-      targetYear: "IIA",
-      grades: [
-        { subject: "Systèmes Asservis & Régulations de Processus", ds: "13.5", exam: "12.0", avg: "12.6" },
-        { subject: "Microcontrôleurs & Architecture Systèmes", ds: "14.0", exam: "13.5", avg: "13.7" }
-      ]
-    },
-    {
-      id: "p_imi",
-      title: "Affichage des Notes - Instrumentation & Mesures Industrielles IMI",
-      category: "notes",
-      content: "Les relevés de notes du Semestre 1 pour la promotion IMI ont été validés par le comité de délibération.",
-      date: "Il y a 4 jours",
-      author: "Service des Examens",
-      targetYear: "IMI",
-      grades: [
-        { subject: "Capteurs Industriels & Instrumentation de Mesure", ds: "13.0", exam: "12.0", avg: "12.4" },
-        { subject: "Thermodynamique Technique", ds: "11.5", exam: "11.0", avg: "11.2" }
-      ]
-    },
-    {
-      id: "p4",
-      title: "Emploi du Temps Semestriel (Version PDF)",
-      category: "planning",
-      content: "Voici le planning hebdomadaire de cours mis en place à l'INSAT. Ce planning intègre les cours en amphi, les séances de TD et les laboratoires de travaux pratiques.",
-      date: "Il y a 5 jours",
-      author: "Direction Pédagogique",
-      fileName: "Emploi_du_Temps_INSAT_S2.pdf",
-      fileSize: "1.8 Mo"
-    }
-  ];
 
   // Filter posts based on student's university year.
   // Note: general posts have no targetYear. Grades posts specify targetYear and are filtered.
@@ -253,128 +228,8 @@ export default function StudentDashboard() {
     (post) => !post.targetYear || post.targetYear === user.year
   );
 
-  // MOCK DATA: Rooms (Google Classroom style)
-  const initialRooms: Room[] = [
-    {
-      id: "r_gl_comp",
-      name: "Compilation & Automates (GL3)",
-      prof: "Dr. Mohamed Slim",
-      profTitle: "Enseignant Technologue - Département Informatique",
-      bgGradient: "from-blue-500 to-indigo-500",
-      targetYear: "GL3",
-      homework: {
-        id: "hw_comp_1",
-        title: "Analyseur Lexical en Lex/Flex",
-        description: "Écrire un analyseur syntaxique pour un sous-ensemble simple de langage C. Déposer le fichier code source .l accompagné d'un compte rendu PDF.",
-        deadline: "Dans 2 jours (25 Mai 2026)",
-        submitted: false
-      },
-      posts: [
-        {
-          id: "rp_comp1",
-          author: "Dr. Mohamed Slim",
-          avatar: "MS",
-          date: "Hier à 14:15",
-          content: "Bonjour à tous. J'ai déposé le support de cours du Chapitre 3 sur l'analyse syntaxique ascendante (LR et LALR). Nous ferons les applications en TD mercredi prochain. Bon travail !",
-          comments: [
-            { id: "rpc1", author: "Yassine Gharbi", content: "Merci professeur ! Est-ce que le chapitre 4 sera inclus dans le DS ?", date: "Hier à 15:02" },
-            { id: "rpc2", author: "Dr. Mohamed Slim", content: "Non Yassine, le DS s'arrêtera à l'analyse syntaxique descendante (LL1).", date: "Hier à 15:30" }
-          ]
-        }
-      ]
-    },
-    {
-      id: "r_gl_design",
-      name: "Conception Orientée Objet & Design Patterns (GL3)",
-      prof: "Dr. Mohamed Slim",
-      profTitle: "Enseignant Technologue - Département Informatique",
-      bgGradient: "from-teal-500 to-emerald-500",
-      targetYear: "GL3",
-      homework: {
-        id: "hw_design_1",
-        title: "TP Décorateur & Observateur",
-        description: "Implémenter une interface de simulation de rapports financiers en appliquant les patterns Decorator et Observer en Java ou C#. Rendre le code source zippé.",
-        deadline: "Dans 5 jours (28 Mai 2026)",
-        submitted: false
-      },
-      posts: [
-        {
-          id: "rp_des1",
-          author: "Dr. Mohamed Slim",
-          avatar: "MS",
-          date: "Il y a 2 jours",
-          content: "Chers étudiants, voici le polycopié de travaux dirigés sur les patterns de structures (Adapter, Decorator, Composite). Veuillez préparer les exercices 1 et 2 pour la séance de laboratoire.",
-          comments: []
-        }
-      ]
-    },
-    {
-      id: "r_gl_net",
-      name: "Réseaux et Protocoles IP (GL3)",
-      prof: "Dr. Kaouthar Belhassen",
-      profTitle: "Maitre de Conférences - Laboratoire Réseaux",
-      bgGradient: "from-purple-500 to-indigo-500",
-      targetYear: "GL3",
-      posts: [
-        {
-          id: "rp_net1",
-          author: "Dr. Kaouthar Belhassen",
-          avatar: "KB",
-          date: "Il y a 3 jours",
-          content: "Bonjour, le calendrier des séances de rattrapage de TP Réseaux (configuration de routeurs Cisco) est affiché au niveau du panneau du département. Veuillez vérifier vos groupes de TP.",
-          comments: []
-        }
-      ]
-    },
-    // MPI classes
-    {
-      id: "r_mpi_math",
-      name: "Analyse Réelle (MPI)",
-      prof: "Prof. Anis Hadded",
-      profTitle: "Chef Département Préparatoire Mathématiques",
-      bgGradient: "from-pink-500 to-rose-500",
-      targetYear: "MPI",
-      homework: {
-        id: "hw_mpi_1",
-        title: "Séries Numériques & Fonctions",
-        description: "Résoudre la série de problèmes n°2 distribuée en classe. Compte-rendu scanné propre en PDF exigé.",
-        deadline: "Dans 3 jours (26 Mai 2026)",
-        submitted: false
-      },
-      posts: [
-        {
-          id: "rp_math1",
-          author: "Prof. Anis Hadded",
-          avatar: "AH",
-          date: "Hier",
-          content: "Bonjour. J'ai publié la feuille de correction du TD 1 sur les suites de Cauchy. Concentrez-vous bien sur les théorèmes de convergence.",
-          comments: []
-        }
-      ]
-    },
-    // IIA classes
-    {
-      id: "r_iia_sys",
-      name: "Systèmes Asservis & Automates (IIA)",
-      prof: "Dr. Kaouthar Belhassen",
-      profTitle: "Département Automatique et Robotique",
-      bgGradient: "from-orange-500 to-amber-500",
-      targetYear: "IIA",
-      posts: [
-        {
-          id: "rp_iia1",
-          author: "Dr. Kaouthar Belhassen",
-          avatar: "KB",
-          date: "Il y a 2 jours",
-          content: "Chers étudiants d'IIA, voici le guide de modélisation sous Matlab Simulink pour les correcteurs PID industriels.",
-          comments: []
-        }
-      ]
-    }
-  ];
-
   // Dynamic storage of custom room comments and homework submission state
-  const [roomsState, setRoomsState] = useState<Room[]>(initialRooms);
+  const [roomsState, setRoomsState] = useState<Room[]>([]);
 
   // Active rooms based on student's year selection
   const activeRooms = roomsState.filter(room => room.targetYear === user.year);
@@ -421,14 +276,11 @@ export default function StudentDashboard() {
     showToast("Commentaire publié avec succès !");
   };
 
-  // Mock Homework Submission
   const handleHomeworkSubmit = (roomId: string) => {
     setHomeworkStatus(prev => ({
       ...prev,
       [roomId]: true
     }));
-    
-    // Simulate updating roomsState homework submitted to true
     setRoomsState(prev => prev.map(room => {
       if (room.id === roomId && room.homework) {
         return {
@@ -453,20 +305,6 @@ export default function StudentDashboard() {
     sendChatMessage(ADMIN_USER_ID, typedMessage.trim());
     setTypedMessage("");
   };
-
-  // MOCK DATA: Academic Calendar (DS & Examens)
-  const calendarData = [
-    { event: "Début des Cours Semestre 1", date: "15 Septembre 2025", badge: "Académique", badgeColor: "bg-blue-50 text-blue-600 border-blue-100" },
-    { event: "Semaine de Devoirs Surveillés (DS1)", date: "10 Nov - 15 Nov 2025", badge: "Évaluation", badgeColor: "bg-amber-50 text-amber-600 border-amber-100" },
-    { event: "Arrêt des Cours S1", date: "20 Décembre 2025", badge: "Calendrier", badgeColor: "bg-slate-50 text-slate-600 border-slate-100" },
-    { event: "Examens Finaux du S1", date: "05 Jan - 15 Jan 2026", badge: "Examens", badgeColor: "bg-red-50 text-red-600 border-red-100" },
-    { event: "Publication des Notes du S1", date: "05 Février 2026", badge: "Affichage", badgeColor: "bg-purple-50 text-purple-600 border-purple-100" },
-    { event: "Début des Cours Semestre 2", date: "12 Février 2026", badge: "Académique", badgeColor: "bg-blue-50 text-blue-600 border-blue-100" },
-    { event: "Semaine de Devoirs Surveillés (DS2)", date: "15 Mar - 20 Mar 2026", badge: "Évaluation", badgeColor: "bg-amber-50 text-amber-600 border-amber-100" },
-    { event: "Arrêt des Cours S2", date: "23 Mai 2026", badge: "Calendrier", badgeColor: "bg-slate-50 text-slate-600 border-slate-100" },
-    { event: "Examens Finaux du S2", date: "01 Juin - 10 Juin 2026", badge: "Examens", badgeColor: "bg-red-50 text-red-600 border-red-100" },
-    { event: "Affichage des Notes Finales & Sessions de Rachat", date: "30 Juin 2026", badge: "Affichage", badgeColor: "bg-purple-50 text-purple-600 border-purple-100" }
-  ];
 
   // Check how many homeworks are active and unsubmitted to notify user
   const unsubmittedHomeworks = activeRooms.filter(r => r.homework && !r.homework.submitted && !homeworkStatus[r.id]);
@@ -734,8 +572,8 @@ export default function StudentDashboard() {
                           <h3 className="text-base font-extrabold text-slate-900 mb-2">{post.title}</h3>
                           <p className="text-xs text-slate-500 leading-relaxed mb-4">{post.content}</p>
 
-                          {/* Interactive PDF Document Attachment */}
-                          {post.category === "document" && post.fileName && (
+                          {/* File Attachment — shown for any post with a file */}
+                          {post.fileName && (
                             <div className="flex items-center justify-between gap-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl hover:bg-slate-100/50 transition-colors">
                               <div className="flex items-center gap-2.5">
                                 <div className="p-2 rounded-xl bg-white border border-slate-100 text-red-500">
@@ -743,55 +581,26 @@ export default function StudentDashboard() {
                                 </div>
                                 <div>
                                   <div className="text-[11px] font-bold text-slate-800">{post.fileName}</div>
-                                  <div className="text-[9px] text-slate-400 font-semibold">{post.fileSize} • Document PDF téléchargeable</div>
+                                  <div className="text-[9px] text-slate-400 font-semibold">{post.fileSize ?? ""} • Fichier téléchargeable</div>
                                 </div>
                               </div>
-                              <button 
-                                onClick={() => showToast(`Téléchargement de ${post.fileName} démarré...`)}
-                                className="p-2 rounded-xl hover:bg-white hover:text-blue-600 text-slate-400 transition-colors cursor-pointer border border-transparent hover:border-slate-100"
-                              >
-                                <Download className="h-4.5 w-4.5" />
-                              </button>
-                            </div>
-                          )}
-
-                          {/* Interactive Schedule File */}
-                          {post.category === "planning" && post.fileName && (
-                            <div className="space-y-4">
-                              <div className="flex items-center justify-between gap-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl">
-                                <div className="flex items-center gap-2.5">
-                                  <div className="p-2 rounded-xl bg-white border border-slate-100 text-purple-600">
-                                    <FileSpreadsheet className="h-5 w-5" />
-                                  </div>
-                                  <div>
-                                    <div className="text-[11px] font-bold text-slate-800">{post.fileName}</div>
-                                    <div className="text-[9px] text-slate-400 font-semibold">{post.fileSize} • Planning Semestriel</div>
-                                  </div>
-                                </div>
-                                <button 
-                                  onClick={() => showToast("Ouverture de l'emploi du temps...")}
-                                  className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:text-blue-600 rounded-xl text-[10px] font-bold transition-all cursor-pointer shadow-sm hover:border-slate-300"
-                                >
-                                  Consulter
-                                </button>
-                              </div>
-                              
-                              {/* Schedule visual representation */}
-                              <div className="border border-slate-100 rounded-2xl overflow-hidden text-[10px] font-semibold text-slate-600 bg-slate-50">
-                                <div className="grid grid-cols-5 text-center bg-slate-100 p-2 font-extrabold text-slate-700 border-b border-slate-200">
-                                  <div>Lundi</div>
-                                  <div>Mardi</div>
-                                  <div>Mercredi</div>
-                                  <div>Jeudi</div>
-                                  <div>Vendredi</div>
-                                </div>
-                                <div className="grid grid-cols-5 text-center p-3 gap-2">
-                                  <div className="p-2 bg-blue-50/70 border border-blue-100 rounded-lg text-blue-700">08:30 - Cours Compilation</div>
-                                  <div className="p-2 bg-teal-50/70 border border-teal-100 rounded-lg text-teal-700">10:15 - Cours Design Patterns</div>
-                                  <div className="p-2 bg-slate-100 rounded-lg text-slate-400 border border-dashed border-slate-200">Libre</div>
-                                  <div className="p-2 bg-purple-50/70 border border-purple-100 rounded-lg text-purple-700">08:30 - TP Réseaux IP</div>
-                                  <div className="p-2 bg-blue-50/70 border border-blue-100 rounded-lg text-blue-700">14:00 - TD Compilation</div>
-                                </div>
+                              <div className="flex items-center gap-2">
+                                {post.fileUrl && (
+                                  <button
+                                    onClick={() => window.open(post.fileUrl, "_blank")}
+                                    className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:text-blue-600 rounded-xl text-[10px] font-bold transition-all cursor-pointer shadow-sm hover:border-slate-300"
+                                  >
+                                    Consulter
+                                  </button>
+                                )}
+                                {post.fileUrl && (
+                                  <button
+                                    onClick={() => handleDownload(post.fileUrl!, post.fileName!)}
+                                    className="p-2 rounded-xl hover:bg-white hover:text-blue-600 text-slate-400 transition-colors cursor-pointer border border-transparent hover:border-slate-100"
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </button>
+                                )}
                               </div>
                             </div>
                           )}
@@ -1132,26 +941,24 @@ export default function StudentDashboard() {
             {activeTab === "calendar" && (
               <div className="space-y-6">
                 
-                <CalendarGrid 
+                <CalendarGrid
                   title="Chronologie Académique - Devoirs Surveillés & Examens"
-                  events={[
-                    { dayNumber: 15, type: 'exam', title: 'DS1' },
-                    { dayNumber: 18, type: 'deadline', title: 'Rendu Projet' },
-                    { dayNumber: 23, type: 'vacation', title: 'Arrêt S2' },
-                  ]}
+                  events={backendCalendarEvents}
                 />
 
                 {/* Upcoming Events List */}
                 <div className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden p-6">
                   <h4 className="text-xs font-extrabold text-slate-800 mb-4">Événements à venir</h4>
                   <div className="space-y-3">
-                    {calendarData.slice(0, 3).map((evt, idx) => (
+                    {backendCalendarEvents.length === 0 ? (
+                      <p className="text-xs text-slate-400 text-center py-2">Aucun événement à venir.</p>
+                    ) : backendCalendarEvents.slice(0, 3).map((evt, idx) => (
                        <div key={idx} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100">
                           <div className="flex items-center gap-3">
-                            <div className={`w-2 h-2 rounded-full ${evt.badge === 'Examens' ? 'bg-red-500' : 'bg-blue-500'}`}></div>
-                            <span className="text-xs font-bold text-slate-700">{evt.event}</span>
+                            <div className={`w-2 h-2 rounded-full ${evt.type === 'exam' ? 'bg-red-500' : 'bg-blue-500'}`}></div>
+                            <span className="text-xs font-bold text-slate-700">{evt.title}</span>
                           </div>
-                          <span className="text-[10px] text-slate-500 font-semibold">{evt.date}</span>
+                          <span className="text-[10px] text-slate-500 font-semibold">{evt.date ?? ""}</span>
                        </div>
                     ))}
                   </div>
