@@ -1,9 +1,5 @@
 import { Resolver, Query, Args, Context } from '@nestjs/graphql';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Publication } from '../admin-agent/publications/entities/publication.entity';
-import { AcademicCalendarConfig } from '../admin-agent/calendar/entities/academic-calendar.entity';
-import { GradeSubmission } from '../admin-agent/grades/entities/grade-submission.entity';
+import { PrismaService } from '../prisma/prisma.service';
 import { PublicationCategory } from '../admin-agent/common/enums/publication-category.enum';
 
 interface GraphqlContext {
@@ -19,12 +15,7 @@ interface GraphqlContext {
 @Resolver()
 export class StudentResolvers {
   constructor(
-    @InjectRepository(Publication)
-    private readonly publicationRepo: Repository<Publication>,
-    @InjectRepository(AcademicCalendarConfig)
-    private readonly calendarRepo: Repository<AcademicCalendarConfig>,
-    @InjectRepository(GradeSubmission)
-    private readonly gradeRepo: Repository<GradeSubmission>,
+    private readonly prisma: PrismaService,
   ) {}
 
   // ─────────────────────────────────────────────────────────────
@@ -43,17 +34,18 @@ export class StudentResolvers {
       catFilter = mapping[categorie.toLowerCase()] ?? categorie;
     }
 
-    const qb = this.publicationRepo
-      .createQueryBuilder('pub')
-      // Exclure les notes (catégorie NOTES = données lourdes pour une autre query)
-      .where('pub.category != :nc', { nc: PublicationCategory.NOTES })
-      .orderBy('pub.createdAt', 'DESC');
+    const where: any = {
+      category: { not: PublicationCategory.NOTES },
+    };
 
     if (catFilter) {
-      qb.andWhere('pub.category = :cat', { cat: catFilter });
+      where.category = catFilter;
     }
 
-    const docs = await qb.getMany();
+    const docs = await this.prisma.publication.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
 
     // ⬇ Anti-overfetching : on n'expose pas contenu/fichierUrl ici
     return docs.map((doc) => ({
@@ -71,7 +63,7 @@ export class StudentResolvers {
   // ─────────────────────────────────────────────────────────────
   @Query('document')
   async getDocument(@Args('id') id: string) {
-    const doc = await this.publicationRepo.findOne({ where: { id } });
+    const doc = await this.prisma.publication.findUnique({ where: { id } });
     if (!doc) return null;
 
     return {
@@ -93,12 +85,12 @@ export class StudentResolvers {
     if (!user) throw new Error('Non authentifié');
     const promo: string = user.promo ?? 'GL3';
 
-    const pub = await this.publicationRepo.findOne({
+    const pub = await this.prisma.publication.findFirst({
       where: {
         category: PublicationCategory.PLANNING,
         targetYear: promo,
       },
-      order: { createdAt: 'DESC' },
+      orderBy: { createdAt: 'desc' },
     });
 
     if (!pub) {
@@ -126,15 +118,19 @@ export class StudentResolvers {
     if (!user.promo) throw new Error('Promo non définie pour cet étudiant');
 
     // On récupère les soumissions publiées ciblant la promo de l'étudiant
-    const submissions = await this.gradeRepo.find({
+    const submissions = await this.prisma.gradeSubmission.findMany({
       where: { targetYear: user.promo },
-      order: { createdAt: 'DESC' },
+      orderBy: { createdAt: 'desc' },
     });
 
     return submissions
       .map((sub) => {
+        // Deserialisation des entries
+        const rawEntries = typeof sub.entries === 'string' ? JSON.parse(sub.entries) : sub.entries;
+        const entries = Array.isArray(rawEntries) ? rawEntries : [];
+
         // Filtrer les lignes qui correspondent à cet étudiant (par nom ou id)
-        const myEntries = sub.entries.filter((e) => {
+        const myEntries = entries.filter((e) => {
           if (e.studentId) return String(e.studentId) === String(user.id);
           if (e.studentName && user.name)
             return e.studentName.toLowerCase().includes(user.name.toLowerCase());
@@ -165,8 +161,8 @@ export class StudentResolvers {
   // ─────────────────────────────────────────────────────────────
   @Query('calendrierAcademique')
   async getAcademicCalendar() {
-    const configs = await this.calendarRepo.find({
-      order: { createdAt: 'DESC' },
+    const configs = await this.prisma.academicCalendarConfig.findMany({
+      orderBy: { createdAt: 'desc' },
     });
 
     if (configs.length === 0) return [];
