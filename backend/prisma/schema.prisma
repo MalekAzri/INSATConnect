@@ -12,7 +12,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
 model User {
   id               Int       @id @default(autoincrement())
   email            String    @unique
@@ -25,76 +24,40 @@ model User {
 }
 
 model Message {
-  id         Int      @id @default(autoincrement())
-  content    String
-  
-  senderId   Int
-  sender     User     @relation("SentMessages", fields: [senderId], references: [id])
-  
+  id      Int    @id @default(autoincrement())
+  content String
+
+  senderId Int
+  sender   User @relation("SentMessages", fields: [senderId], references: [id])
+
   receiverId Int
-  receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
-  createdAt  DateTime @default(now())
+  receiver   User @relation("ReceivedMessages", fields: [receiverId], references: [id])
 }
 
-model Publication {
-  id            String   @id @default(uuid())
-  title         String
-  category      String
-  content       String
-  author        String
-  targetYear    String?
-  fileName      String?
-  filePath      String?
-  fileSizeBytes Int?
-  grades        String?    // Stores serialized array of PublicationGradeLine
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+model Room {
+  id         String @id @default(cuid())
+  name       String
+  targetYear String
+  teacherId  String
+  posts     Post[]
+  homeworks Homework[]
 }
 
-model AcademicCalendarConfig {
-  id                 Int      @id @default(autoincrement())
-  dsRemise           String
-  examRemise         String
-  dsAffichage        String
-  examAffichage      String
-  sem1Deliberation   String
-  sem2Deliberation   String
-  deliberationFinale String
-  s1_ds              String?
-  s1_exam            String?
-  s1_grades_ds       String?
-  s1_publish_ds      String?
-  s1_grades_exam     String?
-  s1_publish_exam    String?
-  s1_delib           String?
-  s2_ds              String?
-  s2_exam            String?
-  s2_grades_ds       String?
-  s2_publish_ds      String?
-  s2_grades_exam     String?
-  s2_publish_exam    String?
-  s2_delib           String?
-  end_year           String?
-  updatedBy          String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+model Post {
+  id      String @id @default(cuid())
+  content String
+  type    String @default("announcement")
+
+  roomId String
+  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
 }
 
-model GradeSubmission {
-  id            String    @id @default(uuid())
-  teacherName   String
-  teacherEmail  String?
-  targetYear    String
-  semester      String?
-  title         String
-  summary       String?
-  entries       String    // Stores serialized array of GradeEntry
-  status        String    @default("pending")
-  validatedBy   String?
-  validatedAt   DateTime?
-  publishedBy   String?
-  publishedAt   DateTime?
-  publicationId String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+model Homework {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  deadline    DateTime
+
+  roomId String
+  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
 }

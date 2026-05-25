@@ -1,0 +1,24 @@
+type Post {
+  id: String!
+  content: String!
+  type: String!
+}
+
+type Homework {
+  id: String!
+  title: String!
+  description: String!
+}
+
+type Room {
+  id: String!
+  name: String!
+  teacherId: String!
+  posts: [Post]
+  homeworks: [Homework]
+}
+
+type Query {
+  rooms: [Room!]!
+  room(id: String!): Room
+}
