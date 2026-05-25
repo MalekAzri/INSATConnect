@@ -1,5 +1,5 @@
 export const getBackendBaseUrl = () =>
-  (process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000").replace(/\/+$/, "");
+  (process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001").replace(/\/+$/, "");
 
 export const buildBackendUrl = (path: string) => {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
