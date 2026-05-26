@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-// Removed TypeOrmModule import because '@nestjs/typeorm' is not available in this environment
+import { ScheduleModule } from '@nestjs/schedule';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { join } from 'path';
@@ -16,6 +16,7 @@ import { AdminAgentModule } from './admin-agent/admin-agent.module';
 import { StudentAgentModule } from './student-agent/student-agent.module';
 import { StudentGraphqlModule } from './student-graphql/student-graphql.module';
 import { TeacherModule } from './teacher/teacher.module';
+import { AuthModule } from './auth/auth.module';
 
 import { Publication } from './admin-agent/publications/entities/publication.entity';
 import { AcademicCalendarConfig } from './admin-agent/calendar/entities/academic-calendar.entity';
@@ -24,8 +25,7 @@ import { GradeSubmission } from './admin-agent/grades/entities/grade-submission.
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-
-    // TypeOrmModule configuration removed to avoid dependency on '@nestjs/typeorm'
+    ScheduleModule.forRoot(),
 
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
@@ -45,6 +45,7 @@ import { GradeSubmission } from './admin-agent/grades/entities/grade-submission.
     StudentAgentModule,
     StudentGraphqlModule,
     TeacherModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],

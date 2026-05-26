@@ -9,7 +9,6 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -101,13 +100,14 @@ model GradeSubmission {
 }
 
 model Notification {
-  id         Int      @id @default(autoincrement())
-  type       String
-  message    String
-  role       String
-  targetYear String?
-  data       String?
-  timestamp  DateTime @default(now())
+  id           Int      @id @default(autoincrement())
+  type         String
+  message      String
+  role         String
+  targetYear   String?
+  targetUserId String?
+  data         String?
+  timestamp    DateTime @default(now())
 }
 
 
@@ -124,6 +124,7 @@ model Post {
   id       String        @id @default(cuid())
   content  String
   type     String        @default("announcement")
+  author   String        @default("")
   roomId   String
   room     Room          @relation(fields: [roomId], references: [id], onDelete: Cascade)
   comments PostComment[]

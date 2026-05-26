@@ -10,4 +10,9 @@ export class SubscribeNotificationsQueryDto {
   @IsString()
   @MaxLength(16)
   year?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  userId?: string;
 }

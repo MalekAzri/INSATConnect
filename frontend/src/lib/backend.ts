@@ -15,6 +15,11 @@ export async function backendFetch(path: string, init?: RequestInit) {
     headers.set("Content-Type", "application/json");
   }
 
+  const token = typeof window !== "undefined" ? localStorage.getItem("insat_token") : null;
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
   try {
     return await fetch(url, {
       ...init,

@@ -6,6 +6,7 @@ export interface NotificationEventData {
   message: string;
   role: NotificationRole;
   targetYear?: string | null;
+  targetUserId?: string | null;
   data?: Record<string, unknown>;
   timestamp: string;
 }
@@ -15,5 +16,6 @@ export interface PublishNotificationInput {
   message: string;
   role: NotificationRole;
   targetYear?: string | null;
+  targetUserId?: string | null;
   data?: Record<string, unknown>;
 }

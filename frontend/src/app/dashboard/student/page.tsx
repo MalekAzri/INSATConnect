@@ -199,14 +199,23 @@ export default function StudentDashboard() {
   }, [chatMessages]);
 
   useEffect(() => {
-    backendGraphQLFetchJson<{ calendrierAcademique: GraphqlAcademicEvent[] }>(GET_ACADEMIC_CALENDAR)
-      .then(data => {
-        if (Array.isArray(data?.calendrierAcademique)) {
-          setBackendCalendarEvents(mapAcademicEventsToCalendarEvents(data.calendrierAcademique));
-        }
-      })
-      .catch(() => {});
-  }, []);
+    const year = user.year || "GL3";
+    Promise.all([
+      backendGraphQLFetchJson<{ calendrierAcademique: GraphqlAcademicEvent[] }>(GET_ACADEMIC_CALENDAR).catch(() => null),
+      backendFetchJson<any[]>(`/teacher/homeworks/year/${year}`).catch(() => []),
+    ]).then(([calData, homeworks]) => {
+      const academic = calData?.calendrierAcademique
+        ? mapAcademicEventsToCalendarEvents(calData.calendrierAcademique)
+        : [];
+      const hwEvents: CalendarEvent[] = (homeworks ?? []).map((hw: any) => ({
+        dayNumber: new Date(hw.deadline).getDate(),
+        type: "deadline" as const,
+        title: hw.title,
+        date: hw.deadline,
+      }));
+      setBackendCalendarEvents([...academic, ...hwEvents]);
+    });
+  }, [user.year]);
 
   const loadFeed = useCallback(() => {
     backendGraphQLFetchJson<{ publications: GraphqlPublication[] }>(GET_PUBLICATIONS, {
@@ -1071,14 +1080,17 @@ export default function StudentDashboard() {
                                     <div className="text-[8px] text-slate-400 font-semibold mt-0.5">Fichiers autorisés : ZIP, PDF (Max. 10 Mo)</div>
                                   </div>
 
-                                  {homeworkFile && (
-                                    <button
-                                      onClick={() => handleHomeworkSubmit(selectedRoom.id)}
-                                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-[10px] font-extrabold transition-all shadow-md shadow-blue-500/10 cursor-pointer"
-                                    >
-                                      Transmettre le Devoir
-                                    </button>
-                                  )}
+                                  <button
+                                    onClick={() => handleHomeworkSubmit(selectedRoom.id)}
+                                    disabled={!homeworkFile}
+                                    className={`w-full py-2.5 rounded-2xl text-[10px] font-extrabold transition-all ${
+                                      homeworkFile
+                                        ? "bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/10 cursor-pointer"
+                                        : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                                    }`}
+                                  >
+                                    {homeworkFile ? "Transmettre le Devoir" : "Sélectionner un fichier d'abord"}
+                                  </button>
                                 </div>
                               )}
                               

@@ -8,6 +8,11 @@ export class CreatePostDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(['announcement', 'document'])
+  @IsIn(['announcement', 'document', 'question'])
   type?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  author?: string;
 }

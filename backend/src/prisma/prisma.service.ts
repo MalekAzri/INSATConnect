@@ -1,17 +1,13 @@
 import 'dotenv/config';
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { PrismaLibSql } from '@prisma/adapter-libsql';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor() {
-    super({
-      datasources: {
-        db: {
-          url: process.env.DATABASE_URL ?? 'file:./dev.db',
-        },
-      },
-    });
+    const adapter = new PrismaLibSql({ url: process.env.DATABASE_URL ?? 'file:./prisma/dev.db' });
+    super({ adapter } as any);
   }
 
   async onModuleInit() {

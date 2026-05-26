@@ -18,9 +18,10 @@ export class NotificationsService {
   stream(query: SubscribeNotificationsQueryDto): Observable<MessageEvent> {
     const subscriberRole = query.role ?? NotificationRole.ALL;
     const subscriberYear = query.year?.trim().toUpperCase();
+    const subscriberUserId = query.userId?.trim();
 
     const notifications$ = this.events$.pipe(
-      filter((event) => this.matches(event, subscriberRole, subscriberYear)),
+      filter((event) => this.matches(event, subscriberRole, subscriberYear, subscriberUserId)),
       map((event) => ({
         id: String(event.id),
         type: event.type,
@@ -48,6 +49,7 @@ export class NotificationsService {
         message: input.message,
         role: input.role,
         targetYear: input.targetYear?.toUpperCase() ?? null,
+        targetUserId: input.targetUserId ?? null,
         data: input.data ? JSON.stringify(input.data) : null,
         timestamp,
       },
@@ -59,6 +61,7 @@ export class NotificationsService {
       message: input.message,
       role: input.role,
       targetYear: input.targetYear?.toUpperCase() ?? null,
+      targetUserId: input.targetUserId ?? null,
       data: input.data,
       timestamp: timestamp.toISOString(),
     };
@@ -82,6 +85,10 @@ export class NotificationsService {
 
     try {
       notifications = await this.prisma.notification.findMany({
+        where: {
+          role: { in: [role, NotificationRole.ALL] },
+          ...(subscriberYear ? { OR: [{ targetYear: subscriberYear }, { targetYear: null }] } : {}),
+        },
         orderBy: { timestamp: 'desc' },
         take: 50,
       });
@@ -92,17 +99,15 @@ export class NotificationsService {
       throw error;
     }
 
-    return notifications
-      .map(n => ({
-        id: n.id,
-        type: n.type,
-        message: n.message,
-        role: n.role as NotificationRole,
-        targetYear: n.targetYear,
-        data: this.safeParseJson(n.data),
-        timestamp: n.timestamp.toISOString(),
-      }))
-      .filter(event => this.matches(event, role, subscriberYear));
+    return notifications.map(n => ({
+      id: n.id,
+      type: n.type,
+      message: n.message,
+      role: n.role as NotificationRole,
+      targetYear: n.targetYear,
+      data: this.safeParseJson(n.data),
+      timestamp: n.timestamp.toISOString(),
+    }));
   }
 
   private safeParseJson(raw: string | null): Record<string, unknown> | undefined {
@@ -129,6 +134,7 @@ export class NotificationsService {
     event: NotificationEventData,
     subscriberRole: NotificationRole,
     subscriberYear?: string,
+    subscriberUserId?: string,
   ): boolean {
     if (subscriberRole !== NotificationRole.ALL) {
       if (
@@ -143,12 +149,12 @@ export class NotificationsService {
       return true;
     }
 
-    if (!event.targetYear) {
-      return true;
+    if (event.targetYear && subscriberRole === NotificationRole.STUDENT) {
+      if (subscriberYear !== event.targetYear) return false;
     }
 
-    if (subscriberRole === NotificationRole.STUDENT) {
-      return subscriberYear === event.targetYear;
+    if (event.targetUserId && subscriberUserId !== event.targetUserId) {
+      return false;
     }
 
     return true;

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Patch, Delete, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Patch, Delete, Query, UseGuards } from '@nestjs/common';
 import { TeacherService } from './teacher.service';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { CreatePostDto } from './dto/create-post.dto';
@@ -8,7 +8,9 @@ import { UpdatePostDto } from './dto/update-post.dto';
 import { UpdateHomeworkDto } from './dto/update-homework.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { SubmitHomeworkDto } from './dto/submit-homework.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
+@UseGuards(JwtAuthGuard)
 @Controller('teacher')
 export class TeacherController {
   constructor(private readonly teacherService: TeacherService) {}
@@ -22,6 +24,11 @@ export class TeacherController {
   @Get('rooms')
   getRooms() {
     return this.teacherService.getRooms();
+  }
+
+  @Get('rooms/year/:year')
+  getRoomsByYear(@Param('year') year: string) {
+    return this.teacherService.getRoomsByYear(year);
   }
 
   @Get('rooms/:id')
@@ -67,6 +74,11 @@ export class TeacherController {
   }
 
   // HOMEWORKS
+  @Get('homeworks/year/:year')
+  getHomeworksByYear(@Param('year') year: string) {
+    return this.teacherService.getHomeworksByYear(year);
+  }
+
   @Post('rooms/:id/homeworks')
   createHomework(@Param('id') id: string, @Body() dto: CreateHomeworkDto) {
     return this.teacherService.createHomework(id, dto);

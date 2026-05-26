@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useUser, UserRole } from "@/context/UserContext";
+import { backendFetchJson } from "@/lib/backend";
 import { GraduationCap, Briefcase, ShieldAlert, ArrowRight, Building } from "lucide-react";
 import Link from "next/link";
 
@@ -11,7 +12,6 @@ export default function LoginPage() {
   const { user, login } = useUser();
   const [role, setRole] = useState<UserRole>("student");
   const [year, setYear] = useState<string>("GL3");
-  const [name, setName] = useState<string>("");
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [error, setError] = useState<string>("");
@@ -26,41 +26,43 @@ export default function LoginPage() {
     }
   }, [user, router]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setIsLoading(true);
 
-    // Mock validation
-    setTimeout(() => {
-      if (!name) {
-        setError("Veuillez saisir votre nom complet.");
-        setIsLoading(false);
-        return;
-      }
-      if (!email || !email.includes("@")) {
-        setError("Veuillez saisir une adresse email valide.");
-        setIsLoading(false);
-        return;
-      }
-      if (password.length < 4) {
-        setError("Le mot de passe doit contenir au moins 4 caractères.");
-        setIsLoading(false);
-        return;
-      }
+    try {
+      const res = await backendFetchJson<{
+        access_token: string;
+        user: { id: number; email: string; name: string; role: string; year?: string };
+      }>("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
 
-      // Successful login
-      login(role, role === "student" ? year : "", name);
-      setIsLoading(false);
-      
-      if (role === "student") {
+      localStorage.setItem("insat_token", res.access_token);
+      const roleMap: Record<string, UserRole> = {
+        etudiant: "student",
+        student: "student",
+        teacher: "teacher",
+        administration: "admin",
+        admin: "admin",
+      };
+      const backendRole: UserRole = roleMap[res.user.role] ?? "student";
+      login(backendRole, res.user.year ?? year, res.user.name, res.user.email, res.user.id);
+
+      if (backendRole === "student") {
         router.push("/dashboard/student");
-      } else if (role === "teacher") {
+      } else if (backendRole === "teacher") {
         router.push("/dashboard/teacher");
-      } else if (role === "admin") {
+      } else {
         router.push("/dashboard/admin");
       }
-    }, 800);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur de connexion");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -179,21 +181,6 @@ export default function LoginPage() {
 
             {/* Personal Details */}
             <div className="space-y-4">
-              <div>
-                <label htmlFor="name-input" className="text-sm font-medium text-slate-700 block mb-1">
-                  Nom Complet
-                </label>
-                <input
-                  id="name-input"
-                  type="text"
-                  required
-                  placeholder={role === "student" ? "Ex: Malek Ben Ali" : role === "teacher" ? "Ex: Dr. Slim" : "Ex: Mme. Sonia"}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="block w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors placeholder-slate-400"
-                />
-              </div>
-
               <div>
                 <label htmlFor="email-input" className="text-sm font-medium text-slate-700 block mb-1">
                   Adresse Email INSAT

@@ -10,12 +10,15 @@ import {
 } from './dto/upsert-academic-calendar.dto';
 import { AcademicCalendarConfig } from './entities/academic-calendar.entity';
 import { CalendarSyncService } from './calendar-sync.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationRole } from '../common/enums/notification-role.enum';
 
 @Injectable()
 export class CalendarService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly calendarSyncService: CalendarSyncService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async getConfig(): Promise<AcademicCalendarConfig | null> {
@@ -78,6 +81,7 @@ export class CalendarService {
     }
 
     const sync = await this.trySync(saved, syncCalendar);
+    this.publishCalendarUpdated();
 
     return { config: saved, sync };
   }
@@ -112,6 +116,7 @@ export class CalendarService {
     }
 
     const sync = await this.trySync(saved, syncCalendar);
+    this.publishCalendarUpdated();
 
     return { config: saved, sync };
   }
@@ -126,6 +131,12 @@ export class CalendarService {
 
     const sync = await this.trySync(current, true);
     return { config: current, sync };
+  }
+
+  private publishCalendarUpdated() {
+    const msg = "Le calendrier académique a été mis à jour par l'administration";
+    void this.notificationsService.publish({ type: 'calendar.updated', message: msg, role: NotificationRole.TEACHER });
+    void this.notificationsService.publish({ type: 'calendar.updated', message: msg, role: NotificationRole.STUDENT });
   }
 
   private async trySync(config: AcademicCalendarConfig, enabled: boolean) {

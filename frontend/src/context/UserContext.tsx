@@ -15,7 +15,7 @@ export interface UserState {
 
 interface UserContextType {
   user: UserState;
-  login: (role: UserRole, year?: string, name?: string) => void;
+  login: (role: UserRole, year?: string, name?: string, email?: string, id?: number) => void;
   logout: () => void;
   updateYear: (year: string) => void;
 }
@@ -48,20 +48,19 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     setIsLoaded(true);
   }, []);
 
-  const login = (role: UserRole, year: string = "GL3", name?: string) => {
+  const login = (role: UserRole, year: string = "GL3", name?: string, email?: string, id?: number) => {
     let defaultName = "Étudiant INSAT";
-    let email = "student@insat.u-cartago.tn";
-    // Simulated IDs: admin=1, student=2 (in a real app, this comes from the backend)
-    let simulatedId: number = 2;
-    
+    let defaultEmail = "student@insat.u-cartago.tn";
+    let defaultId: number = 2;
+
     if (role === "teacher") {
       defaultName = name || "Dr. Mohamed Slim";
-      email = "m.slim@insat.u-cartago.tn";
-      simulatedId = 3;
+      defaultEmail = "m.slim@insat.u-cartago.tn";
+      defaultId = 3;
     } else if (role === "admin") {
       defaultName = name || "Mme. Sonia (Scolarité)";
-      email = "sonia.admin@insat.u-cartago.tn";
-      simulatedId = 1;
+      defaultEmail = "sonia.admin@insat.u-cartago.tn";
+      defaultId = 1;
     } else if (name) {
       defaultName = name;
     }
@@ -70,11 +69,11 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       isLoggedIn: true,
       role,
       year: role === "student" ? year : "",
-      name: defaultName,
-      email,
-      id: simulatedId,
+      name: name || defaultName,
+      email: email || defaultEmail,
+      id: id ?? defaultId,
     };
-    
+
     setUser(newUserState);
     localStorage.setItem("insat_connect_user", JSON.stringify(newUserState));
   };

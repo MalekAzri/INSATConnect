@@ -5,7 +5,7 @@ import { useUser } from "@/context/UserContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CalendarGrid, { CalendarEvent } from "@/components/Calendar";
-import { backendFetchJson } from "@/lib/backend";
+import { backendFetchJson, buildBackendUrl } from "@/lib/backend";
 import {
   Download,
   FileText,
@@ -22,6 +22,13 @@ import {
 } from "lucide-react";
 
 // Types
+interface RoomComment {
+  id: string;
+  authorName: string;
+  content: string;
+  createdAt: string;
+}
+
 interface RoomPost {
   id: string;
   author: string;
@@ -32,6 +39,7 @@ interface RoomPost {
   fileName?: string;
   fileSize?: string;
   isMe?: boolean;
+  comments: RoomComment[];
 }
 
 interface Homework {
@@ -340,39 +348,70 @@ export default function TeacherDashboard() {
     return roomGradients[hash];
   };
 
+  const loadRooms = React.useCallback(async () => {
+    try {
+      const data = await backendFetchJson<any[]>("/teacher/rooms");
+      const teacherRooms = data.filter((r: any) =>
+        r.teacherId === String(user.id) || r.teacherId === user.name
+      );
+      setRooms(teacherRooms.map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        subject: r.name,
+        targetYear: r.targetYear,
+        bgGradient: getRoomGradient(r.id),
+        posts: (r.posts ?? []).map((p: any) => ({
+          id: p.id,
+          author: p.author || r.teacherId,
+          avatar: (p.author?.[0] ?? r.teacherId?.[0] ?? "P").toUpperCase(),
+          date: "Récemment",
+          content: p.content,
+          type: p.type ?? "announcement",
+          isMe: p.author === user.name || p.author === String(user.id),
+          comments: (p.comments ?? []).map((c: any) => ({
+            id: c.id,
+            authorName: c.authorName,
+            content: c.content,
+            createdAt: c.createdAt,
+          })),
+        })),
+        homeworks: (r.homeworks ?? []).map((h: any) => ({
+          id: h.id,
+          title: h.title,
+          description: h.description,
+          deadline: typeof h.deadline === "string" ? h.deadline.slice(0, 10) : h.deadline,
+          submissionsCount: Array.isArray(h.submissions) ? h.submissions.length : 0,
+        })),
+      })));
+    } catch {
+      showToast("Impossible de charger les salles.");
+    }
+  }, [user.id, user.name]);
+
   useEffect(() => {
-    const loadRooms = async () => {
-      try {
-        const data = await backendFetchJson<any[]>("/teacher/rooms");
-        setRooms(data.map((r) => ({
-          id: r.id,
-          name: r.name,
-          subject: r.name,
-          targetYear: r.targetYear,
-          bgGradient: getRoomGradient(r.id),
-          posts: (r.posts ?? []).map((p: any) => ({
-            id: p.id,
-            author: r.teacherId,
-            avatar: (r.teacherId?.[0] ?? "P").toUpperCase(),
-            date: "Récemment",
-            content: p.content,
-            type: p.type ?? "announcement",
-            isMe: r.teacherId === user.name,
-          })),
-          homeworks: (r.homeworks ?? []).map((h: any) => ({
-            id: h.id,
-            title: h.title,
-            description: h.description,
-            deadline: typeof h.deadline === "string" ? h.deadline.slice(0, 10) : h.deadline,
-            submissionsCount: Array.isArray(h.submissions) ? h.submissions.length : 0,
-          })),
-        })));
-      } catch {
-        showToast("Impossible de charger les salles.");
-      }
-    };
     void loadRooms();
-  }, []);
+  }, [loadRooms]);
+
+  // Polling toutes les 5s quand une room est ouverte (fallback si SSE ne reçoit pas la notif)
+  useEffect(() => {
+    if (!selectedRoomId) return;
+    const timer = setInterval(() => { void loadRooms(); }, 5000);
+    return () => clearInterval(timer);
+  }, [selectedRoomId, loadRooms]);
+
+  useEffect(() => {
+    if (!user.isLoggedIn || !user.id) return;
+    const sseUrl = buildBackendUrl(`/admin-agent/notifications/stream?role=teacher&userId=${user.id}`);
+    const source = new EventSource(sseUrl);
+    source.addEventListener("message", (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data as string);
+        if (data?.message) showToast(data.message);
+        void loadRooms();
+      } catch { /* ignore */ }
+    });
+    return () => source.close();
+  }, [user.isLoggedIn, user.id, loadRooms]);
 
   useEffect(() => {
     if (selectedRoom?.targetYear) {
@@ -469,7 +508,7 @@ export default function TeacherDashboard() {
         body: JSON.stringify({
           name: newRoomName.trim(),
           targetYear: newRoomYear,
-          teacherId: user.name || "Enseignant",
+          teacherId: String(user.id),
         }),
       });
 
@@ -517,6 +556,7 @@ export default function TeacherDashboard() {
         body: JSON.stringify({
           content: postContent.trim(),
           type: attachedFile ? "document" : "announcement",
+          author: user.name || "Enseignant",
         }),
       });
 
@@ -530,6 +570,7 @@ export default function TeacherDashboard() {
         fileName: attachedFile ? attachedFile.name : undefined,
         fileSize: attachedFile ? (attachedFile.size / (1024 * 1024)).toFixed(2) + " Mo" : undefined,
         isMe: true,
+        comments: [],
       };
 
       setRooms(rooms.map(r => r.id === selectedRoomId ? { ...r, posts: [newPost, ...r.posts] } : r));
@@ -1092,6 +1133,22 @@ export default function TeacherDashboard() {
                               <div className="text-[10px] text-slate-400 font-semibold">{post.fileSize}</div>
                             </div>
                           </div>
+                        </div>
+                      )}
+
+                      {post.comments.length > 0 && (
+                        <div className="mt-4 pt-3 border-t border-slate-100 space-y-2">
+                          {post.comments.map(c => (
+                            <div key={c.id} className="flex gap-2.5">
+                              <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs shrink-0">
+                                {c.authorName?.[0]?.toUpperCase() ?? "?"}
+                              </div>
+                              <div className="flex-1 bg-slate-50 rounded-xl px-3 py-2">
+                                <span className="text-xs font-bold text-slate-700 mr-2">{c.authorName}</span>
+                                <span className="text-xs text-slate-600">{c.content}</span>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
