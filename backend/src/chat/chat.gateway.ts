@@ -7,27 +7,29 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
+import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { MessagesService } from '../messages/messages.service';
 
-@WebSocketGateway({ cors: true })
+@WebSocketGateway({ cors: { origin: '*' } })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server!: Server;
 
+  private readonly logger = new Logger(ChatGateway.name);
   private userSockets = new Map<number, string>();
 
   constructor(private readonly messagesService: MessagesService) {}
 
   handleConnection(client: Socket) {
-    console.log(`Client connected: ${client.id}`);
+    this.logger.log(`Client connected: ${client.id}`);
   }
 
   handleDisconnect(client: Socket) {
-    console.log(`Client disconnected: ${client.id}`);
     for (const [userId, socketId] of this.userSockets.entries()) {
       if (socketId === client.id) {
         this.userSockets.delete(userId);
+        this.logger.log(`User ${userId} disconnected (socket ${client.id})`);
         break;
       }
     }
@@ -39,8 +41,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ): void {
     const numId = Number(userId);
+    if (!numId) return; // rejette les IDs invalides (0, null, NaN)
     const socketId = client.id;
-    console.log(`User ${numId} registered with socket ${socketId}`);
+    this.logger.log(`User ${numId} registered with socket ${socketId}`);
     this.userSockets.set(numId, socketId);
   }
 
@@ -74,6 +77,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const receiverSocketId = this.userSockets.get(receiverId);
       if (receiverSocketId) {
         this.server.to(receiverSocketId).emit('newMessage', emittedMessage);
+      } else {
+        this.logger.warn(`Receiver ${receiverId} not connected — message saved to DB but not delivered in real-time`);
       }
 
       // Emit back to sender to replace optimistic message with real one
@@ -81,8 +86,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.server.to(senderSocketId).emit('newMessage', emittedMessage);
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`sendMessage error: ${message}`);
       if (senderSocketId) {
-        const message = error instanceof Error ? error.message : String(error);
         this.server.to(senderSocketId).emit('chatError', {
           message,
           clientTempId: payload.clientTempId,

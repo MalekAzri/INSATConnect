@@ -170,7 +170,7 @@ export default function StudentDashboard() {
   
   // Chat States - connected to real backend
   const ADMIN_USER_ID = 1; // admin user ID as set by the DB seed
-  const { messages: chatMessages, sendMessage: sendChatMessage, isConnected: isChatConnected, isLoading: isChatLoading } = useChat({
+  const { messages: chatMessages, sendMessage: sendChatMessage, isConnected: isChatConnected, isLoading: isChatLoading, fetchConversation } = useChat({
     userId: user.id,
     otherUserId: ADMIN_USER_ID,
   });
@@ -183,6 +183,13 @@ export default function StudentDashboard() {
       router.push("/login");
     }
   }, [user.isLoggedIn, router]);
+
+  // Re-fetch conversation each time student opens the chat tab (catches missed WS messages)
+  useEffect(() => {
+    if (activeTab === "chat" && user.id) {
+      fetchConversation(user.id, ADMIN_USER_ID);
+    }
+  }, [activeTab, user.id, fetchConversation]);
 
   // Scroll to bottom of chat when messages change
   useEffect(() => {
