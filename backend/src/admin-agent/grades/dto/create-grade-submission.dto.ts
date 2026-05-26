@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsEmail,
+  IsIn,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -12,39 +13,27 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-export class GradeEntryDto {
-  @IsOptional()
+export class StudentGradeDto {
   @IsString()
+  @IsNotEmpty()
   @MaxLength(64)
-  studentId?: string;
+  studentId!: string;
 
   @IsString()
   @IsNotEmpty()
-  @MaxLength(180)
-  studentName!: string;
+  @MaxLength(100)
+  lastName!: string;
 
   @IsString()
   @IsNotEmpty()
-  @MaxLength(180)
-  subject!: string;
+  @MaxLength(100)
+  firstName!: string;
 
   @Type(() => Number)
   @IsNumber()
   @Min(0)
   @Max(20)
-  ds!: number;
-
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @Max(20)
-  exam!: number;
-
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @Max(20)
-  avg!: number;
+  grade!: number;
 }
 
 export class CreateGradeSubmissionDto {
@@ -63,10 +52,19 @@ export class CreateGradeSubmissionDto {
   @MaxLength(16)
   targetYear!: string;
 
-  @IsOptional()
   @IsString()
+  @IsNotEmpty()
   @MaxLength(16)
-  semester?: string;
+  semester!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(180)
+  subject!: string;
+
+  @IsString()
+  @IsIn(['DS', 'EXAM'])
+  examType!: 'DS' | 'EXAM';
 
   @IsString()
   @IsNotEmpty()
@@ -80,6 +78,6 @@ export class CreateGradeSubmissionDto {
 
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => GradeEntryDto)
-  entries!: GradeEntryDto[];
+  @Type(() => StudentGradeDto)
+  entries!: StudentGradeDto[];
 }

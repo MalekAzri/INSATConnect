@@ -54,12 +54,13 @@ interface Room {
 
 type GradeSubmissionStatus = "pending" | "validated" | "published";
 
+type ExamType = "DS" | "EXAM";
+
 interface BackendGradeEntry {
-  studentName: string;
-  subject: string;
-  ds: number;
-  exam: number;
-  avg: number;
+  studentId: string;
+  lastName: string;
+  firstName: string;
+  grade: number;
 }
 
 interface BackendGradeSubmission {
@@ -67,7 +68,9 @@ interface BackendGradeSubmission {
   teacherName: string;
   teacherEmail?: string | null;
   targetYear: string;
-  semester?: string | null;
+  semester: string;
+  subject: string;
+  examType: ExamType;
   title: string;
   summary?: string | null;
   entries: BackendGradeEntry[];
@@ -112,21 +115,19 @@ interface TeacherCalendarRow {
 }
 
 interface TeacherGradeRow {
-  studentName: string;
-  subject: string;
-  ds: string;
-  exam: string;
-  avg: string;
+  studentId: string;
+  lastName: string;
+  firstName: string;
+  grade: string;
 }
 
 const classTargets = ["MPI", "GL2", "GL3", "GL4", "IIA", "IMI", "RT"] as const;
 
 const emptyGradeRow = (): TeacherGradeRow => ({
-  studentName: "",
-  subject: "",
-  ds: "",
-  exam: "",
-  avg: "",
+  studentId: "",
+  lastName: "",
+  firstName: "",
+  grade: "",
 });
 
 const normalizeHeader = (value: string) =>
@@ -188,27 +189,25 @@ const parseGradeRowsFromCsv = (rawCsv: string): TeacherGradeRow[] => {
   const firstRow = matrix[0];
 
   const headerAliases = {
-    studentName: new Set(["studentname", "student", "etudiant", "nometudiant", "nom"]),
-    subject: new Set(["subject", "matiere", "module", "cours"]),
-    ds: new Set(["ds", "noteds", "devoir", "devoirsurveille"]),
-    exam: new Set(["exam", "examen", "noteexam"]),
-    avg: new Set(["avg", "average", "moyenne", "moy"]),
+    studentId: new Set(["studentid", "matricule", "id", "cin", "numero", "numeromatricule"]),
+    lastName: new Set(["lastname", "nom", "nomfamille"]),
+    firstName: new Set(["firstname", "prenom", "prenoms"]),
+    grade: new Set(["grade", "note", "resultat", "avg", "moyenne"]),
   };
 
   const normalizedHeader = firstRow.map((cell) => normalizeHeader(cell));
   const headerIndexes = {
-    studentName: normalizedHeader.findIndex((key) => headerAliases.studentName.has(key)),
-    subject: normalizedHeader.findIndex((key) => headerAliases.subject.has(key)),
-    ds: normalizedHeader.findIndex((key) => headerAliases.ds.has(key)),
-    exam: normalizedHeader.findIndex((key) => headerAliases.exam.has(key)),
-    avg: normalizedHeader.findIndex((key) => headerAliases.avg.has(key)),
+    studentId: normalizedHeader.findIndex((key) => headerAliases.studentId.has(key)),
+    lastName: normalizedHeader.findIndex((key) => headerAliases.lastName.has(key)),
+    firstName: normalizedHeader.findIndex((key) => headerAliases.firstName.has(key)),
+    grade: normalizedHeader.findIndex((key) => headerAliases.grade.has(key)),
   };
 
   const hasRecognizedHeader =
-    headerIndexes.studentName >= 0 &&
-    headerIndexes.subject >= 0 &&
-    headerIndexes.ds >= 0 &&
-    headerIndexes.exam >= 0;
+    headerIndexes.studentId >= 0 &&
+    headerIndexes.lastName >= 0 &&
+    headerIndexes.firstName >= 0 &&
+    headerIndexes.grade >= 0;
 
   const startIndex = hasRecognizedHeader ? 1 : 0;
 
@@ -218,30 +217,16 @@ const parseGradeRowsFromCsv = (rawCsv: string): TeacherGradeRow[] => {
       const getCell = (index: number, fallbackIndex: number) =>
         index >= 0 ? (cells[index] ?? "") : (cells[fallbackIndex] ?? "");
 
-      const studentName = getCell(headerIndexes.studentName, 0).trim();
-      const subject = getCell(headerIndexes.subject, 1).trim();
-      const dsText = getCell(headerIndexes.ds, 2).replace(",", ".").trim();
-      const examText = getCell(headerIndexes.exam, 3).replace(",", ".").trim();
-      const avgTextRaw = getCell(headerIndexes.avg, 4).replace(",", ".").trim();
+      const studentId = getCell(headerIndexes.studentId, 0).trim();
+      const lastName = getCell(headerIndexes.lastName, 1).trim();
+      const firstName = getCell(headerIndexes.firstName, 2).trim();
+      const grade = getCell(headerIndexes.grade, 3).replace(",", ".").trim();
 
-      if (!studentName && !subject && !dsText && !examText && !avgTextRaw) {
+      if (!studentId && !lastName && !firstName && !grade) {
         return null;
       }
 
-      let avgText = avgTextRaw;
-      const dsNum = Number(dsText);
-      const examNum = Number(examText);
-      if (!avgText && Number.isFinite(dsNum) && Number.isFinite(examNum)) {
-        avgText = ((dsNum + examNum) / 2).toFixed(2);
-      }
-
-      return {
-        studentName,
-        subject,
-        ds: dsText,
-        exam: examText,
-        avg: avgText,
-      };
+      return { studentId, lastName, firstName, grade };
     })
     .filter((row): row is TeacherGradeRow => row !== null);
 
@@ -312,6 +297,8 @@ export default function TeacherDashboard() {
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const [gradeTargetYear, setGradeTargetYear] = useState("GL3");
   const [gradeSemester, setGradeSemester] = useState("S1");
+  const [gradeSubject, setGradeSubject] = useState("");
+  const [gradeExamType, setGradeExamType] = useState<ExamType>("DS");
   const [gradeTitle, setGradeTitle] = useState("");
   const [gradeSummary, setGradeSummary] = useState("");
   const [gradeRows, setGradeRows] = useState<TeacherGradeRow[]>([emptyGradeRow()]);
@@ -340,6 +327,52 @@ export default function TeacherDashboard() {
   const [rooms, setRooms] = useState<Room[]>([]);
 
   const selectedRoom = rooms.find(r => r.id === selectedRoomId);
+
+  const roomGradients = [
+    "from-blue-500 to-indigo-600",
+    "from-teal-500 to-emerald-600",
+    "from-purple-500 to-fuchsia-600",
+    "from-rose-500 to-orange-500",
+  ];
+  const getRoomGradient = (id: string) => {
+    let hash = 0;
+    for (const c of id) hash = (hash * 31 + c.charCodeAt(0)) % roomGradients.length;
+    return roomGradients[hash];
+  };
+
+  useEffect(() => {
+    const loadRooms = async () => {
+      try {
+        const data = await backendFetchJson<any[]>("/teacher/rooms");
+        setRooms(data.map((r) => ({
+          id: r.id,
+          name: r.name,
+          subject: r.name,
+          targetYear: r.targetYear,
+          bgGradient: getRoomGradient(r.id),
+          posts: (r.posts ?? []).map((p: any) => ({
+            id: p.id,
+            author: r.teacherId,
+            avatar: (r.teacherId?.[0] ?? "P").toUpperCase(),
+            date: "Récemment",
+            content: p.content,
+            type: p.type ?? "announcement",
+            isMe: r.teacherId === user.name,
+          })),
+          homeworks: (r.homeworks ?? []).map((h: any) => ({
+            id: h.id,
+            title: h.title,
+            description: h.description,
+            deadline: typeof h.deadline === "string" ? h.deadline.slice(0, 10) : h.deadline,
+            submissionsCount: Array.isArray(h.submissions) ? h.submissions.length : 0,
+          })),
+        })));
+      } catch {
+        showToast("Impossible de charger les salles.");
+      }
+    };
+    void loadRooms();
+  }, []);
 
   useEffect(() => {
     if (selectedRoom?.targetYear) {
@@ -426,25 +459,38 @@ export default function TeacherDashboard() {
   const [newRoomYear, setNewRoomYear] = useState("GL3");
   const [newRoomGradient, setNewRoomGradient] = useState("from-purple-500 to-fuchsia-600");
 
-  const handleCreateRoom = (e: React.FormEvent) => {
+  const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRoomName.trim() || !newRoomSubject.trim()) return;
 
-    const newRoom: Room = {
-      id: `r_${Date.now()}`,
-      name: newRoomName,
-      subject: newRoomSubject,
-      targetYear: newRoomYear,
-      bgGradient: newRoomGradient,
-      posts: [],
-      homeworks: []
-    };
+    try {
+      const created = await backendFetchJson<any>("/teacher/rooms", {
+        method: "POST",
+        body: JSON.stringify({
+          name: newRoomName.trim(),
+          targetYear: newRoomYear,
+          teacherId: user.name || "Enseignant",
+        }),
+      });
 
-    setRooms([newRoom, ...rooms]);
-    setIsCreatingRoom(false);
-    setNewRoomName("");
-    setNewRoomSubject("");
-    showToast(`Salle "${newRoomName}" créée avec succès !`);
+      const newRoom: Room = {
+        id: created.id,
+        name: created.name,
+        subject: newRoomSubject,
+        targetYear: created.targetYear,
+        bgGradient: newRoomGradient,
+        posts: [],
+        homeworks: [],
+      };
+
+      setRooms([newRoom, ...rooms]);
+      setIsCreatingRoom(false);
+      setNewRoomName("");
+      setNewRoomSubject("");
+      showToast(`Salle "${newRoomName}" créée avec succès !`);
+    } catch {
+      showToast("Impossible de créer la salle.");
+    }
   };
 
   // Post / Document / Homework Creation State
@@ -462,45 +508,70 @@ export default function TeacherDashboard() {
   const [hwDesc, setHwDesc] = useState("");
   const [hwDeadline, setHwDeadline] = useState("");
 
-  const handleCreatePost = () => {
+  const handleCreatePost = async () => {
     if (!postContent.trim() || !selectedRoomId) return;
 
-    const newPost: RoomPost = {
-      id: `p_${Date.now()}`,
-      author: user.name || "Enseignant",
-      avatar: user.name ? user.name[0] : "E",
-      date: "À l'instant",
-      content: postContent,
-      type: attachedFile ? "document" : "announcement",
-      fileName: attachedFile ? attachedFile.name : undefined,
-      fileSize: attachedFile ? (attachedFile.size / (1024 * 1024)).toFixed(2) + " Mo" : undefined,
-      isMe: true
-    };
+    try {
+      const created = await backendFetchJson<any>(`/teacher/rooms/${selectedRoomId}/posts`, {
+        method: "POST",
+        body: JSON.stringify({
+          content: postContent.trim(),
+          type: attachedFile ? "document" : "announcement",
+        }),
+      });
 
-    setRooms(rooms.map(r => r.id === selectedRoomId ? { ...r, posts: [newPost, ...r.posts] } : r));
-    setPostContent("");
-    setAttachedFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    showToast("Publication ajoutée !");
+      const newPost: RoomPost = {
+        id: created.id,
+        author: user.name || "Enseignant",
+        avatar: user.name ? user.name[0].toUpperCase() : "E",
+        date: "À l'instant",
+        content: created.content,
+        type: created.type,
+        fileName: attachedFile ? attachedFile.name : undefined,
+        fileSize: attachedFile ? (attachedFile.size / (1024 * 1024)).toFixed(2) + " Mo" : undefined,
+        isMe: true,
+      };
+
+      setRooms(rooms.map(r => r.id === selectedRoomId ? { ...r, posts: [newPost, ...r.posts] } : r));
+      setPostContent("");
+      setAttachedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      showToast("Publication ajoutée !");
+    } catch {
+      showToast("Impossible d'ajouter la publication.");
+    }
   };
 
-  const handleCreateHomework = () => {
+  const handleCreateHomework = async () => {
     if (!hwTitle.trim() || !hwDesc.trim() || !hwDeadline.trim() || !selectedRoomId) return;
 
-    const newHw: Homework = {
-      id: `hw_${Date.now()}`,
-      title: hwTitle,
-      description: hwDesc,
-      deadline: hwDeadline,
-      submissionsCount: 0
-    };
+    try {
+      const created = await backendFetchJson<any>(`/teacher/rooms/${selectedRoomId}/homeworks`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: hwTitle.trim(),
+          description: hwDesc.trim(),
+          deadline: hwDeadline,
+        }),
+      });
 
-    setRooms(rooms.map(r => r.id === selectedRoomId ? { ...r, homeworks: [newHw, ...r.homeworks] } : r));
-    setHwTitle("");
-    setHwDesc("");
-    setHwDeadline("");
-    setComposeType("post");
-    showToast("Devoir assigné !");
+      const newHw: Homework = {
+        id: created.id,
+        title: created.title,
+        description: created.description,
+        deadline: typeof created.deadline === "string" ? created.deadline.slice(0, 10) : hwDeadline,
+        submissionsCount: 0,
+      };
+
+      setRooms(rooms.map(r => r.id === selectedRoomId ? { ...r, homeworks: [newHw, ...r.homeworks] } : r));
+      setHwTitle("");
+      setHwDesc("");
+      setHwDeadline("");
+      setComposeType("post");
+      showToast("Devoir assigné !");
+    } catch {
+      showToast("Impossible d'assigner le devoir.");
+    }
   };
 
   const loadTeacherSubmissions = async () => {
@@ -579,9 +650,9 @@ export default function TeacherDashboard() {
 
   const downloadGradesCsvTemplate = () => {
     const template =
-      "studentName,subject,ds,exam,avg\n" +
-      "Nom Etudiant 1,Compilation,14.5,15,14.75\n" +
-      "Nom Etudiant 2,Compilation,10,12,11\n";
+      "studentId,lastName,firstName,grade\n" +
+      "12345,Ben Ali,Mohamed,14.5\n" +
+      "12346,Trabelsi,Fatma,16\n";
 
     const blob = new Blob([template], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -599,13 +670,17 @@ export default function TeacherDashboard() {
       return;
     }
 
+    if (!gradeSubject.trim()) {
+      showToast("Indiquez la matière.");
+      return;
+    }
+
     const nonEmptyRows = gradeRows.filter(
       (row) =>
-        row.studentName.trim() ||
-        row.subject.trim() ||
-        row.ds.trim() ||
-        row.exam.trim() ||
-        row.avg.trim(),
+        row.studentId.trim() ||
+        row.lastName.trim() ||
+        row.firstName.trim() ||
+        row.grade.trim(),
     );
 
     if (!nonEmptyRows.length) {
@@ -615,31 +690,20 @@ export default function TeacherDashboard() {
 
     try {
       const entries = nonEmptyRows.map((row, index) => {
-        const studentName = row.studentName.trim();
-        const subject = row.subject.trim();
-        const ds = Number(row.ds);
-        const exam = Number(row.exam);
-        const avg = Number(row.avg);
+        const studentId = row.studentId.trim();
+        const lastName = row.lastName.trim();
+        const firstName = row.firstName.trim();
+        const grade = Number(row.grade);
 
-        if (!studentName || !subject) {
-          throw new Error(`Ligne ${index + 1}: nom étudiant et matière obligatoires.`);
+        if (!studentId || !lastName || !firstName) {
+          throw new Error(`Ligne ${index + 1}: matricule, nom et prénom obligatoires.`);
         }
 
-        if (
-          !Number.isFinite(ds) ||
-          !Number.isFinite(exam) ||
-          !Number.isFinite(avg) ||
-          ds < 0 ||
-          exam < 0 ||
-          avg < 0 ||
-          ds > 20 ||
-          exam > 20 ||
-          avg > 20
-        ) {
-          throw new Error(`Ligne ${index + 1}: les notes doivent être entre 0 et 20.`);
+        if (!Number.isFinite(grade) || grade < 0 || grade > 20) {
+          throw new Error(`Ligne ${index + 1}: la note doit être entre 0 et 20.`);
         }
 
-        return { studentName, subject, ds, exam, avg };
+        return { studentId, lastName, firstName, grade };
       });
 
       setIsSubmittingGrades(true);
@@ -650,6 +714,8 @@ export default function TeacherDashboard() {
           teacherEmail: user.email || undefined,
           targetYear: gradeTargetYear,
           semester: gradeSemester,
+          subject: gradeSubject.trim(),
+          examType: gradeExamType,
           title: gradeTitle.trim(),
           summary: gradeSummary.trim() || undefined,
           entries,
@@ -658,6 +724,8 @@ export default function TeacherDashboard() {
 
       setGradeTitle("");
       setGradeSummary("");
+      setGradeSubject("");
+      setGradeExamType("DS");
       setGradeRows([emptyGradeRow()]);
       setImportedGradesFileName(null);
       showToast("Soumission de notes envoyée à l'administration.");
@@ -781,8 +849,8 @@ export default function TeacherDashboard() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto bg-[#F9FBFC] p-6">
-          <div className="mx-auto max-w-5xl h-full flex flex-col">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-[#F9FBFC] p-6">
+          <div className="mx-auto max-w-5xl w-full h-full flex flex-col">
             
             {/* TAB: ROOMS (List of rooms) */}
             {activeTab === "rooms" && !selectedRoomId && !isCreatingRoom && (
@@ -844,7 +912,7 @@ export default function TeacherDashboard() {
                   </button>
                 </div>
                 
-                <form onSubmit={handleCreateRoom} className="space-y-5">
+                <form onSubmit={(e) => { void handleCreateRoom(e); }} className="space-y-5">
                   <div>
                     <label className="block text-xs font-black text-slate-700 uppercase mb-2">Nom de la salle</label>
                     <input 
@@ -943,7 +1011,7 @@ export default function TeacherDashboard() {
                           <FileText className="h-4 w-4" /> {attachedFile ? attachedFile.name : "Joindre un document"}
                         </button>
                         <button 
-                          onClick={handleCreatePost}
+                          onClick={() => { void handleCreatePost(); }}
                           disabled={!postContent.trim()}
                           className="bg-teal-600 disabled:bg-teal-300 hover:bg-teal-700 text-white px-5 py-2 rounded-xl text-sm font-bold shadow-md shadow-teal-500/20 transition-all flex items-center gap-2"
                         >
@@ -967,7 +1035,7 @@ export default function TeacherDashboard() {
                           className="flex-1 bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-medium text-slate-800 focus:outline-none focus:border-teal-300"
                         />
                         <button 
-                          onClick={handleCreateHomework}
+                          onClick={() => { void handleCreateHomework(); }}
                           disabled={!hwTitle.trim() || !hwDesc.trim() || !hwDeadline.trim()}
                           className="bg-teal-600 disabled:bg-teal-300 hover:bg-teal-700 text-white px-6 py-2 rounded-xl text-sm font-bold shadow-md transition-all"
                         >
@@ -1065,9 +1133,11 @@ export default function TeacherDashboard() {
 
             {/* TAB: GRADES */}
             {activeTab === "grades" && (
-              <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_1fr] gap-6">
-                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-5">
-                  <div>
+              <div className="space-y-6">
+
+                {/* ── Formulaire de soumission ── */}
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
+                  <div className="mb-5">
                     <h2 className="text-xl font-extrabold text-slate-800">Soumettre des notes</h2>
                     <p className="text-sm font-medium text-slate-500 mt-1">
                       Cette soumission sera ensuite validée puis publiée par l&apos;administration.
@@ -1075,18 +1145,17 @@ export default function TeacherDashboard() {
                   </div>
 
                   <form onSubmit={handleSubmitGradeSubmission} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Ligne 1 : Classe / Semestre / Matière / Type */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                       <div>
                         <label className="block text-xs font-black text-slate-700 uppercase mb-2">Classe</label>
                         <select
                           value={gradeTargetYear}
                           onChange={(e) => setGradeTargetYear(e.target.value)}
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:border-teal-500"
+                          className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:border-teal-500"
                         >
                           {classTargets.map((target) => (
-                            <option key={target} value={target}>
-                              {target}
-                            </option>
+                            <option key={target} value={target}>{target}</option>
                           ))}
                         </select>
                       </div>
@@ -1095,15 +1164,38 @@ export default function TeacherDashboard() {
                         <select
                           value={gradeSemester}
                           onChange={(e) => setGradeSemester(e.target.value)}
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:border-teal-500"
+                          className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:border-teal-500"
                         >
                           <option value="S1">Semestre 1</option>
                           <option value="S2">Semestre 2</option>
                           <option value="Annuel">Annuel</option>
                         </select>
                       </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-700 uppercase mb-2">Matière</label>
+                        <input
+                          type="text"
+                          required
+                          value={gradeSubject}
+                          onChange={(e) => setGradeSubject(e.target.value)}
+                          placeholder="Ex: Compilation"
+                          className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-teal-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-700 uppercase mb-2">Type d&apos;épreuve</label>
+                        <select
+                          value={gradeExamType}
+                          onChange={(e) => setGradeExamType(e.target.value as ExamType)}
+                          className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:border-teal-500"
+                        >
+                          <option value="DS">DS</option>
+                          <option value="EXAM">Examen</option>
+                        </select>
+                      </div>
                     </div>
 
+                    {/* Ligne 2 : Titre */}
                     <div>
                       <label className="block text-xs font-black text-slate-700 uppercase mb-2">Titre</label>
                       <input
@@ -1112,126 +1204,79 @@ export default function TeacherDashboard() {
                         value={gradeTitle}
                         onChange={(e) => setGradeTitle(e.target.value)}
                         placeholder="Ex: GL3 - Compilation - Session principale"
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-teal-500"
+                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-teal-500"
                       />
                     </div>
 
+                    {/* Ligne 3 : Résumé */}
                     <div>
                       <label className="block text-xs font-black text-slate-700 uppercase mb-2">Résumé (optionnel)</label>
                       <textarea
                         value={gradeSummary}
                         onChange={(e) => setGradeSummary(e.target.value)}
                         placeholder="Précisions éventuelles pour l'administration..."
-                        className="w-full px-4 py-3 min-h-[82px] bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-teal-500 resize-none"
+                        className="w-full px-4 py-2.5 min-h-[64px] bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-teal-500 resize-none"
                       />
                     </div>
 
+                    {/* Tableau étudiants */}
                     <div className="border border-slate-100 rounded-2xl overflow-hidden">
-                      <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-xs font-black text-slate-600 uppercase tracking-wider">
-                        Détail des notes (DS / Examen / Moyenne)
-                      </div>
-                      <div className="p-4 space-y-3">
-                        <div className="flex flex-wrap items-center gap-2 pb-2 border-b border-slate-100">
-                          <input
-                            ref={gradeCsvInputRef}
-                            type="file"
-                            accept=".csv,text/csv"
-                            onChange={handleGradeFileImport}
-                            className="hidden"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => gradeCsvInputRef.current?.click()}
-                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200"
-                          >
-                            <FileText className="h-4 w-4" /> Importer un fichier CSV
+                      <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-black text-slate-600 uppercase tracking-wider">Liste des étudiants</span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input ref={gradeCsvInputRef} type="file" accept=".csv,text/csv" onChange={handleGradeFileImport} className="hidden" />
+                          <button type="button" onClick={() => gradeCsvInputRef.current?.click()}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200">
+                            <FileText className="h-3.5 w-3.5" /> Importer CSV
                           </button>
-                          <button
-                            type="button"
-                            onClick={downloadGradesCsvTemplate}
-                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200"
-                          >
-                            <Download className="h-4 w-4" /> Télécharger modèle CSV
+                          <button type="button" onClick={downloadGradesCsvTemplate}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200">
+                            <Download className="h-3.5 w-3.5" /> Modèle CSV
                           </button>
                           {importedGradesFileName && (
-                            <span className="text-[11px] font-semibold text-slate-500">
-                              Fichier importé: {importedGradesFileName}
-                            </span>
+                            <span className="text-[11px] font-semibold text-slate-400">· {importedGradesFileName}</span>
                           )}
                         </div>
+                      </div>
 
+                      {/* En-têtes colonnes */}
+                      <div className="hidden md:grid grid-cols-[1fr_1.2fr_1.2fr_.8fr_auto] gap-2 px-4 pt-3 pb-1">
+                        {["Matricule","Nom","Prénom","Note /20",""].map(h => (
+                          <span key={h} className="text-[10px] font-black uppercase text-slate-400 tracking-wider">{h}</span>
+                        ))}
+                      </div>
+
+                      <div className="p-4 pt-2 space-y-2">
                         {gradeRows.map((row, index) => (
-                          <div key={`grade-row-${index}`} className="grid grid-cols-1 md:grid-cols-[1.5fr_1.5fr_.8fr_.8fr_.8fr_auto] gap-2">
-                            <input
-                              type="text"
-                              placeholder="Étudiant"
-                              value={row.studentName}
-                              onChange={(e) => updateGradeRow(index, "studentName", e.target.value)}
-                              className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:border-teal-400"
-                            />
-                            <input
-                              type="text"
-                              placeholder="Matière"
-                              value={row.subject}
-                              onChange={(e) => updateGradeRow(index, "subject", e.target.value)}
-                              className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:border-teal-400"
-                            />
-                            <input
-                              type="number"
-                              min="0"
-                              max="20"
-                              step="0.01"
-                              placeholder="DS"
-                              value={row.ds}
-                              onChange={(e) => updateGradeRow(index, "ds", e.target.value)}
-                              className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:border-teal-400"
-                            />
-                            <input
-                              type="number"
-                              min="0"
-                              max="20"
-                              step="0.01"
-                              placeholder="Exam"
-                              value={row.exam}
-                              onChange={(e) => updateGradeRow(index, "exam", e.target.value)}
-                              className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:border-teal-400"
-                            />
-                            <input
-                              type="number"
-                              min="0"
-                              max="20"
-                              step="0.01"
-                              placeholder="Moy."
-                              value={row.avg}
-                              onChange={(e) => updateGradeRow(index, "avg", e.target.value)}
-                              className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:border-teal-400"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => removeGradeRow(index)}
-                              className="px-3 py-2 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 border border-red-100"
-                            >
-                              Suppr.
+                          <div key={`grade-row-${index}`} className="grid grid-cols-1 md:grid-cols-[1fr_1.2fr_1.2fr_.8fr_auto] gap-2">
+                            <input type="text" placeholder="Matricule" value={row.studentId}
+                              onChange={(e) => updateGradeRow(index, "studentId", e.target.value)}
+                              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:border-teal-400" />
+                            <input type="text" placeholder="Nom" value={row.lastName}
+                              onChange={(e) => updateGradeRow(index, "lastName", e.target.value)}
+                              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:border-teal-400" />
+                            <input type="text" placeholder="Prénom" value={row.firstName}
+                              onChange={(e) => updateGradeRow(index, "firstName", e.target.value)}
+                              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:border-teal-400" />
+                            <input type="number" min="0" max="20" step="0.01" placeholder="Note" value={row.grade}
+                              onChange={(e) => updateGradeRow(index, "grade", e.target.value)}
+                              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:border-teal-400" />
+                            <button type="button" onClick={() => removeGradeRow(index)}
+                              className="px-3 py-2 rounded-xl text-xs font-bold text-red-500 hover:bg-red-50 border border-red-100">
+                              ✕
                             </button>
                           </div>
                         ))}
-
-                        <button
-                          type="button"
-                          onClick={addGradeRow}
-                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100"
-                        >
+                        <button type="button" onClick={addGradeRow}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 mt-1">
                           <Plus className="h-4 w-4" /> Ajouter une ligne
                         </button>
                       </div>
                     </div>
 
-                    <div className="pt-3 border-t border-slate-100 flex justify-end">
-                      <button
-                        type="submit"
-                        disabled={isSubmittingGrades}
-                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-teal-600 disabled:bg-teal-300 hover:bg-teal-700 shadow-lg shadow-teal-500/20 transition-all"
-                      >
+                    <div className="flex justify-end">
+                      <button type="submit" disabled={isSubmittingGrades}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-teal-600 disabled:bg-teal-300 hover:bg-teal-700 shadow-lg shadow-teal-500/20 transition-all">
                         {isSubmittingGrades ? "Envoi..." : "Envoyer à l'administration"}
                         <SendHorizontal className="h-4 w-4" />
                       </button>
@@ -1239,63 +1284,65 @@ export default function TeacherDashboard() {
                   </form>
                 </div>
 
-                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-extrabold text-slate-800">Mes soumissions</h3>
-                    <button
-                      type="button"
-                      onClick={() => void loadTeacherSubmissions()}
-                      className="text-xs font-bold text-teal-600 hover:underline"
-                    >
+                {/* ── Historique des soumissions ── */}
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
+                  <div className="flex items-center justify-between mb-5">
+                    <div>
+                      <h3 className="text-xl font-extrabold text-slate-800">Historique des soumissions</h3>
+                      <p className="text-sm font-medium text-slate-400 mt-0.5">{teacherSubmissions.length} soumission(s) au total</p>
+                    </div>
+                    <button type="button" onClick={() => void loadTeacherSubmissions()}
+                      className="text-xs font-bold text-teal-600 hover:underline px-3 py-1.5 rounded-lg hover:bg-teal-50 transition-colors">
                       Actualiser
                     </button>
                   </div>
 
                   {isLoadingSubmissions && (
-                    <div className="text-xs font-semibold text-slate-500 bg-slate-50 border border-slate-100 rounded-xl p-3">
+                    <div className="text-xs font-semibold text-slate-500 bg-slate-50 border border-slate-100 rounded-xl p-4 text-center">
                       Chargement des soumissions...
                     </div>
                   )}
 
                   {!isLoadingSubmissions && teacherSubmissions.length === 0 && (
-                    <div className="text-xs font-semibold text-slate-500 bg-slate-50 border border-slate-100 rounded-xl p-3">
+                    <div className="text-xs font-semibold text-slate-500 bg-slate-50 border border-slate-100 rounded-xl p-6 text-center">
                       Aucune soumission envoyée pour le moment.
                     </div>
                   )}
 
-                  {!isLoadingSubmissions && teacherSubmissions.map((submission) => {
-                    const status = gradeStatusMeta[submission.status];
-                    return (
-                      <div key={submission.id} className="rounded-2xl border border-slate-100 p-4 space-y-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <h4 className="text-sm font-extrabold text-slate-800">{submission.title}</h4>
-                            <p className="text-[11px] font-semibold text-slate-400">
-                              {submission.targetYear} · {submission.semester || "Semestre N/A"} · {submission.entries.length} lignes
-                            </p>
+                  {!isLoadingSubmissions && teacherSubmissions.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {teacherSubmissions.map((submission) => {
+                        const status = gradeStatusMeta[submission.status];
+                        return (
+                          <div key={submission.id} className="rounded-2xl border border-slate-100 p-4 space-y-3 hover:border-slate-200 transition-colors">
+                            <div className="flex items-start justify-between gap-2">
+                              <h4 className="text-sm font-extrabold text-slate-800 leading-snug">{submission.title}</h4>
+                              <span className={`shrink-0 text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full border ${status.className}`}>
+                                {status.label}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              <span className="text-[11px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">{submission.targetYear}</span>
+                              <span className="text-[11px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">{submission.semester || "Sem. N/A"}</span>
+                              <span className="text-[11px] font-bold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-md">{submission.subject || "Matière N/A"}</span>
+                              <span className="text-[11px] font-bold bg-violet-50 text-violet-600 px-2 py-0.5 rounded-md">{submission.examType}</span>
+                              <span className="text-[11px] font-bold bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-md">{submission.entries.length} étudiant(s)</span>
+                            </div>
+                            {submission.summary && (
+                              <p className="text-xs text-slate-500 leading-relaxed">{submission.summary}</p>
+                            )}
+                            <div className="pt-2 border-t border-slate-100 text-[11px] font-semibold text-slate-400 space-y-0.5">
+                              <p>Envoyée le {formatDateTime(submission.createdAt)}</p>
+                              {submission.validatedAt && <p>Validée par {submission.validatedBy || "Admin"} le {formatDateTime(submission.validatedAt)}</p>}
+                              {submission.publishedAt && <p>Publiée le {formatDateTime(submission.publishedAt)}</p>}
+                            </div>
                           </div>
-                          <span className={`text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-md border ${status.className}`}>
-                            {status.label}
-                          </span>
-                        </div>
-
-                        {submission.summary && (
-                          <p className="text-xs text-slate-600">{submission.summary}</p>
-                        )}
-
-                        <div className="pt-2 border-t border-slate-100 text-[11px] font-semibold text-slate-500 space-y-1">
-                          <p>Envoyée le {formatDateTime(submission.createdAt)}</p>
-                          {submission.validatedAt && (
-                            <p>Validée par {submission.validatedBy || "Admin"} le {formatDateTime(submission.validatedAt)}</p>
-                          )}
-                          {submission.publishedAt && (
-                            <p>Publiée le {formatDateTime(submission.publishedAt)}</p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
+
               </div>
             )}
 

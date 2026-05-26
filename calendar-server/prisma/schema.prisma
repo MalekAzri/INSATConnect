@@ -1,0 +1,17 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model AcademicDate {
+  id               Int      @id @default(autoincrement())
+  key              String   @unique
+  date             String
+  targetRole       String
+  notificationSent Boolean  @default(false)
+  updatedAt        DateTime @updatedAt
+}

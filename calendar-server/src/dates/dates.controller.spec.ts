@@ -8,7 +8,15 @@ describe('DatesController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [DatesController],
-      providers: [DatesService],
+      providers: [
+        {
+          provide: DatesService,
+          useValue: {
+            setDates: jest.fn(),
+            getAllDates: jest.fn(),
+          },
+        },
+      ],
     }).compile();
 
     controller = module.get<DatesController>(DatesController);

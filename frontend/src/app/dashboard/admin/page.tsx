@@ -5,7 +5,7 @@ import { useUser } from "@/context/UserContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CalendarGrid, { CalendarEvent } from "@/components/Calendar";
-import { useChat, BackendMessage, ConversationSummary } from "@/hooks/useChat";
+import { useChat } from "@/hooks/useChat";
 import { backendFetchJson, buildBackendUrl } from "@/lib/backend";
 import { 
   Bell, 
@@ -13,16 +13,11 @@ import {
   ChevronRight, 
   MessageSquare, 
   Calendar, 
-  User, 
   LogOut, 
-  Send, 
   CheckCircle2, 
-  AlertTriangle,
   Sparkles,
   BookOpen,
   SendHorizontal,
-  Settings,
-  Plus,
   FileText,
   FileSpreadsheet,
   Inbox,
@@ -89,11 +84,10 @@ interface BackendCalendarResponse {
 type GradeSubmissionStatus = "pending" | "validated" | "published";
 
 interface BackendGradeEntry {
-  studentName: string;
-  subject: string;
-  ds: number;
-  exam: number;
-  avg: number;
+  studentId: string;
+  lastName: string;
+  firstName: string;
+  grade: number;
 }
 
 interface BackendGradeSubmission {
@@ -101,7 +95,9 @@ interface BackendGradeSubmission {
   teacherName: string;
   teacherEmail?: string | null;
   targetYear: string;
-  semester?: string | null;
+  semester: string;
+  subject: string;
+  examType: "DS" | "EXAM";
   title: string;
   summary?: string | null;
   entries: BackendGradeEntry[];
@@ -250,24 +246,6 @@ const fromBackendCalendar = (config: BackendCalendarConfig) => ({
   end_year: config.end_year ?? config.deliberationFinale,
 });
 
-// ─── Chat types ──────────────────────────────────────────────────────────────
-interface ChatMessage {
-  id: string;
-  sender: "student" | "admin";
-  text: string;
-  time: string;
-}
-interface Conversation {
-  id: string;
-  studentName: string;
-  studentClass: string;
-  lastMessage: string;
-  time: string;
-  unread: number;
-  messages: ChatMessage[];
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
 export default function AdminDashboard() {
   const router = useRouter();
   const { user, logout } = useUser();
@@ -298,7 +276,6 @@ export default function AdminDashboard() {
     messages: activeConvMessages, 
     conversations, 
     sendMessage: sendChatMessage,
-    isConnected: isChatConnected,
     isLoading: isChatLoading,
     fetchConversationsList,
     fetchConversation,
@@ -736,6 +713,12 @@ export default function AdminDashboard() {
               <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border bg-slate-50 text-slate-500 border-slate-200">
                 {submission.semester || "Semestre N/A"}
               </span>
+              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border bg-teal-50 text-teal-600 border-teal-200">
+                {submission.subject || "Matière N/A"}
+              </span>
+              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border bg-indigo-50 text-indigo-600 border-indigo-200">
+                {submission.examType}
+              </span>
             </div>
             <h4 className="text-base font-black text-slate-800">{submission.title}</h4>
             <p className="text-xs text-slate-500 font-semibold">
@@ -822,8 +805,8 @@ export default function AdminDashboard() {
             <p className="text-[11px] font-extrabold uppercase text-slate-500 mb-2">Aperçu des lignes</p>
             <div className="space-y-1.5">
               {submission.entries.slice(0, 4).map((entry, index) => (
-                <p key={`${submission.id}-${entry.studentName}-${entry.subject}-${index}`} className="text-xs text-slate-600">
-                  {entry.studentName} · {entry.subject} · DS {entry.ds} · EX {entry.exam} · AVG {entry.avg}
+                <p key={`${submission.id}-${entry.studentId}-${index}`} className="text-xs text-slate-600">
+                  {entry.lastName} {entry.firstName} · {entry.studentId} · {entry.grade}/20
                 </p>
               ))}
               {submission.entries.length > 4 && (

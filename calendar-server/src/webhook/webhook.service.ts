@@ -6,22 +6,32 @@ import * as crypto from 'crypto';
 @Injectable()
 export class WebhookService {
   private readonly logger = new Logger(WebhookService.name);
-  private readonly webhookUrl: string;
-    private readonly webhookSecret: string;
+  private readonly webhookUrl: string | null;
+  private readonly webhookSecret: string | null;
 
   constructor(private readonly config: ConfigService) {
-     this.webhookUrl    = this.config.getOrThrow<string>('MAIN_SERVER_WEBHOOK_URL');
-    this.webhookSecret = this.config.getOrThrow<string>('WEBHOOK_SECRET');
+    this.webhookUrl =
+      this.config.get<string>('MAIN_SERVER_WEBHOOK_URL') ?? null;
+    this.webhookSecret = this.config.get<string>('WEBHOOK_SECRET') ?? null;
+
+    if (!this.webhookUrl || !this.webhookSecret) {
+      this.logger.warn(
+        'Webhook disabled: MAIN_SERVER_WEBHOOK_URL or WEBHOOK_SECRET is not set.',
+      );
+    }
   }
 
   async sendAlert(payload: {
-    type: string;       // ex: 'ds_remise', 'exam_affichage', etc.
+    type: string; // ex: 'ds_remise', 'exam_affichage', etc.
     targetRole: string; // 'professeur'  'admin'
     date: string;
     daysLeft: number;
   }): Promise<void> {
+    if (!this.webhookUrl || !this.webhookSecret) {
+      return;
+    }
 
-    const body   = JSON.stringify(payload);
+    const body = JSON.stringify(payload);
 
     // Signature HMAC-SHA256 pour authentifier l'envoi
     const signature = crypto
@@ -36,7 +46,9 @@ export class WebhookService {
           'X-Webhook-Signature': `sha256=${signature}`,
         },
       });
-      this.logger.log(`Webhook envoyé : ${payload.type} → ${payload.targetRole} (J-${payload.daysLeft})`);
+      this.logger.log(
+        `Webhook envoyé : ${payload.type} → ${payload.targetRole} (J-${payload.daysLeft})`,
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`Échec du webhook : ${message}`);

@@ -94,12 +94,20 @@ export class PublicationsService {
       ];
     }
 
-    const pubs = await this.prisma.publication.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      skip: query.offset ? Number(query.offset) : 0,
-      take: query.limit ? Number(query.limit) : 50,
-    });
+    let pubs: any[] = [];
+    try {
+      pubs = await this.prisma.publication.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: query.offset ? Number(query.offset) : 0,
+        take: query.limit ? Number(query.limit) : 50,
+      });
+    } catch (error) {
+      if (this.isMissingTableError(error, 'Publication')) {
+        return [];
+      }
+      throw error;
+    }
 
     return pubs.map((p) => this.mapToEntity(p));
   }
@@ -152,5 +160,12 @@ export class PublicationsService {
     await this.findOne(id);
     await this.prisma.publication.delete({ where: { id } });
     return { deleted: true, id };
+  }
+
+  private isMissingTableError(error: unknown, modelName: string): boolean {
+    if (!error || typeof error !== 'object') return false;
+    const code = (error as { code?: string }).code;
+    const meta = (error as { meta?: { modelName?: string } }).meta;
+    return code === 'P2021' && meta?.modelName === modelName;
   }
 }

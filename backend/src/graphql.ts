@@ -22,44 +22,6 @@ export enum DocumentCategorie {
     PLANNING = "PLANNING"
 }
 
-export class Post {
-    id: string;
-    content: string;
-    type: string;
-}
-
-export class Homework {
-    id: string;
-    title: string;
-    description: string;
-}
-
-export class Room {
-    id: string;
-    name: string;
-    teacherId: string;
-    posts?: Nullable<Nullable<Post>[]>;
-    homeworks?: Nullable<Nullable<Homework>[]>;
-}
-
-export abstract class IQuery {
-    abstract rooms(): Room[] | Promise<Room[]>;
-
-    abstract room(id: string): Nullable<Room> | Promise<Nullable<Room>>;
-
-    abstract publications(targetYear?: Nullable<string>): Publication[] | Promise<Publication[]>;
-
-    abstract documents(categorie?: Nullable<string>): Nullable<Document>[] | Promise<Nullable<Document>[]>;
-
-    abstract document(id: string): Nullable<Document> | Promise<Nullable<Document>>;
-
-    abstract emploiDuTemps(): Nullable<Timetable> | Promise<Nullable<Timetable>>;
-
-    abstract mesNotes(): Grade[] | Promise<Grade[]>;
-
-    abstract calendrierAcademique(): AcademicEvent[] | Promise<AcademicEvent[]>;
-}
-
 export class Document {
     id: string;
     titre: string;
@@ -79,15 +41,14 @@ export class Timetable {
 
 export class GradeLine {
     matiere: string;
-    ds: string;
-    examen: string;
-    moyenne: string;
+    typeEpreuve: string;
+    note: string;
 }
 
 export class Grade {
     id: string;
     etudiantId: number;
-    semestre: number;
+    semestre: string;
     details: GradeLine[];
     datePublication: string;
 }
@@ -98,6 +59,14 @@ export class AcademicEvent {
     dateDebut: string;
     dateFin: string;
     type: AcademicEventType;
+}
+
+export class PublicationGradeLine {
+    subject?: Nullable<string>;
+    studentId?: Nullable<string>;
+    studentName?: Nullable<string>;
+    examType?: Nullable<string>;
+    grade?: Nullable<string>;
 }
 
 export class Publication {
@@ -111,6 +80,21 @@ export class Publication {
     fichierUrl?: Nullable<string>;
     fileName?: Nullable<string>;
     fileSize?: Nullable<string>;
+    grades?: Nullable<PublicationGradeLine[]>;
+}
+
+export abstract class IQuery {
+    abstract publications(targetYear?: Nullable<string>): Publication[] | Promise<Publication[]>;
+
+    abstract documents(categorie?: Nullable<string>): Nullable<Document>[] | Promise<Nullable<Document>[]>;
+
+    abstract document(id: string): Nullable<Document> | Promise<Nullable<Document>>;
+
+    abstract emploiDuTemps(): Nullable<Timetable> | Promise<Nullable<Timetable>>;
+
+    abstract mesNotes(): Grade[] | Promise<Grade[]>;
+
+    abstract calendrierAcademique(): AcademicEvent[] | Promise<AcademicEvent[]>;
 }
 
 type Nullable<T> = T | null;

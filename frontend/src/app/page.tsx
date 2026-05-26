@@ -9,7 +9,6 @@ import {
   Users,
   MessageSquare,
   Calendar,
-  FileText,
   CheckCircle2,
   ArrowRight,
   Layers,

@@ -2,9 +2,10 @@ import { PublicationCategory } from '../../common/enums/publication-category.enu
 
 export interface PublicationGradeLine {
   subject: string;
-  ds: string;
-  exam: string;
-  avg: string;
+  studentId: string;
+  studentName: string;
+  examType: string;
+  grade: string;
 }
 
 export class Publication {

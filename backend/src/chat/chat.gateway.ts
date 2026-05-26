@@ -51,27 +51,43 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       senderId: number;
       receiverId: number;
       content: string;
+      clientTempId?: number;
     },
   ) {
     const senderId = Number(payload.senderId);
     const receiverId = Number(payload.receiverId);
-
-    const savedMessage = await this.messagesService.createMessage({
-      senderId,
-      receiverId,
-      content: payload.content,
-    });
-
-    // Emit to receiver
-    const receiverSocketId = this.userSockets.get(receiverId);
-    if (receiverSocketId) {
-      this.server.to(receiverSocketId).emit('newMessage', savedMessage);
-    }
-
-    // Emit back to sender to replace optimistic message with real one
     const senderSocketId = this.userSockets.get(senderId);
-    if (senderSocketId) {
-      this.server.to(senderSocketId).emit('newMessage', savedMessage);
+
+    try {
+      const savedMessage = await this.messagesService.createMessage({
+        senderId,
+        receiverId,
+        content: payload.content,
+      });
+
+      const emittedMessage = {
+        ...savedMessage,
+        clientTempId: payload.clientTempId,
+      };
+
+      // Emit to receiver
+      const receiverSocketId = this.userSockets.get(receiverId);
+      if (receiverSocketId) {
+        this.server.to(receiverSocketId).emit('newMessage', emittedMessage);
+      }
+
+      // Emit back to sender to replace optimistic message with real one
+      if (senderSocketId) {
+        this.server.to(senderSocketId).emit('newMessage', emittedMessage);
+      }
+    } catch (error) {
+      if (senderSocketId) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.server.to(senderSocketId).emit('chatError', {
+          message,
+          clientTempId: payload.clientTempId,
+        });
+      }
     }
   }
 }

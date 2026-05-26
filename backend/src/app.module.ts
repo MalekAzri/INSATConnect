@@ -8,7 +8,6 @@ import { join } from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
-import { UsersModule } from './users/users.module';
 import { MessagesModule } from './messages/messages.module';
 import { ChatModule } from './chat/chat.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -16,6 +15,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AdminAgentModule } from './admin-agent/admin-agent.module';
 import { StudentAgentModule } from './student-agent/student-agent.module';
 import { StudentGraphqlModule } from './student-graphql/student-graphql.module';
+import { TeacherModule } from './teacher/teacher.module';
 
 import { Publication } from './admin-agent/publications/entities/publication.entity';
 import { AcademicCalendarConfig } from './admin-agent/calendar/entities/academic-calendar.entity';
@@ -37,7 +37,6 @@ import { GradeSubmission } from './admin-agent/grades/entities/grade-submission.
       context: ({ req }: { req: unknown }) => ({ req }),
     }),
 
-    UsersModule,
     MessagesModule,
     ChatModule,
     PrismaModule,
@@ -45,6 +44,7 @@ import { GradeSubmission } from './admin-agent/grades/entities/grade-submission.
     AdminAgentModule,
     StudentAgentModule,
     StudentGraphqlModule,
+    TeacherModule,
   ],
   controllers: [AppController],
   providers: [AppService],

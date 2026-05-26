@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 
@@ -7,6 +7,17 @@ export class MessagesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async createMessage(createMessageDto: CreateMessageDto) {
+    const [sender, receiver] = await Promise.all([
+      this.prisma.user.findUnique({ where: { id: createMessageDto.senderId } }),
+      this.prisma.user.findUnique({ where: { id: createMessageDto.receiverId } }),
+    ]);
+
+    if (!sender || !receiver) {
+      throw new NotFoundException(
+        'Expéditeur ou destinataire introuvable. Initialisez les utilisateurs (seed Prisma).',
+      );
+    }
+
     return this.prisma.message.create({
       data: {
         content: createMessageDto.content,

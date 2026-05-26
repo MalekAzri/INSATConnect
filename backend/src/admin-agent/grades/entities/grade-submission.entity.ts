@@ -1,12 +1,10 @@
 import { GradeSubmissionStatus } from '../../common/enums/grade-submission-status.enum';
 
-export interface GradeEntry {
-  studentId?: string;
-  studentName: string;
-  subject: string;
-  ds: number;
-  exam: number;
-  avg: number;
+export interface StudentGrade {
+  studentId: string;
+  lastName: string;
+  firstName: string;
+  grade: number;
 }
 
 export class GradeSubmission {
@@ -14,10 +12,12 @@ export class GradeSubmission {
   teacherName!: string;
   teacherEmail?: string | null;
   targetYear!: string;
-  semester?: string | null;
+  semester!: string;
+  subject!: string;
+  examType!: 'DS' | 'EXAM';
   title!: string;
   summary?: string | null;
-  entries!: GradeEntry[];
+  entries!: StudentGrade[];
   status!: GradeSubmissionStatus;
   validatedBy?: string | null;
   validatedAt?: Date | null;

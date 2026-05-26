@@ -32,15 +32,14 @@ type Timetable {
 
 type GradeLine {
   matiere: String!
-  ds: String!
-  examen: String!
-  moyenne: String!
+  typeEpreuve: String!
+  note: String!
 }
 
 type Grade {
   id: ID!
   etudiantId: Int!
-  semestre: Int!
+  semestre: String!
   details: [GradeLine!]!
   datePublication: String!
 }
@@ -51,6 +50,14 @@ type AcademicEvent {
   dateDebut: String!
   dateFin: String!
   type: AcademicEventType!
+}
+
+type PublicationGradeLine {
+  subject: String
+  studentId: String
+  studentName: String
+  examType: String
+  grade: String
 }
 
 type Publication {
@@ -64,6 +71,7 @@ type Publication {
   fichierUrl: String
   fileName: String
   fileSize: String
+  grades: [PublicationGradeLine!]
 }
 
 type Query {

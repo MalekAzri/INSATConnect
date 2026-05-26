@@ -66,15 +66,13 @@ export class StudentResolvers {
     @Context() context?: GraphqlContext,
   ) {
     const year = targetYear?.trim().toUpperCase() || context?.req?.user?.promo?.trim().toUpperCase();
-
-    const where: any = {
-      AND: [{ category: { not: PublicationCategory.NOTES } }],
-    };
+    const where: any = {};
 
     if (year) {
-      where.AND.push({
-        OR: [{ targetYear: null }, { targetYear: year }],
-      });
+      where.OR = [
+        { targetYear: null },
+        { targetYear: year },
+      ];
     }
 
     const pubs = await this.prisma.publication.findMany({
@@ -93,6 +91,7 @@ export class StudentResolvers {
       fichierUrl: pub.filePath ?? pub.fileName ?? null,
       fileName: pub.fileName ?? null,
       fileSize: pub.fileSizeBytes ? `${(pub.fileSizeBytes / (1024 * 1024)).toFixed(2)} Mo` : null,
+      grades: pub.grades ? JSON.parse(pub.grades) : null,
     }));
   }
 
@@ -155,9 +154,8 @@ export class StudentResolvers {
     if (!user) throw new Error('Non authentifié');
     if (!user.promo) throw new Error('Promo non définie pour cet étudiant');
 
-    // On récupère les soumissions publiées ciblant la promo de l'étudiant
     const submissions = await this.prisma.gradeSubmission.findMany({
-      where: { targetYear: user.promo },
+      where: { targetYear: user.promo, status: 'published' },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -165,36 +163,25 @@ export class StudentResolvers {
       .map((sub) => {
         const entries = JSON.parse(sub.entries || '[]') as Array<{
           studentId?: string | number;
-          studentName?: string;
-          subject?: string;
-          ds?: string | number;
-          exam?: string | number;
-          avg?: string | number;
+          grade?: number;
         }>;
 
-        const myEntries = entries.filter((e) => {
-          if (e.studentId) return String(e.studentId) === String(user.id);
-          if (e.studentName && user.name)
-            return e.studentName.toLowerCase().includes(user.name.toLowerCase());
-          return false;
-        });
-
-        const parsed = parseInt(sub.semester || '', 10);
+        const myEntry = entries.find((e) => e.studentId && String(e.studentId) === String(user.id));
+        if (!myEntry) return null;
 
         return {
           id: sub.id,
           etudiantId: user.id,
-          semestre: isNaN(parsed) ? 1 : parsed,
+          semestre: sub.semester || '',
           datePublication: sub.createdAt.toISOString(),
-          details: myEntries.map((e) => ({
-            matiere: e.subject || '',
-            ds: String(e.ds ?? ''),
-            examen: String(e.exam ?? ''),
-            moyenne: String(e.avg ?? ''),
-          })),
+          details: [{
+            matiere: sub.subject || '',
+            typeEpreuve: sub.examType || 'DS',
+            note: String(myEntry.grade ?? ''),
+          }],
         };
       })
-      .filter((r) => r.details.length > 0);
+      .filter((r): r is NonNullable<typeof r> => r !== null);
   }
 
   // ─────────────────────────────────────────────────────────────

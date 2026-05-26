@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
+import { buildBackendUrl, getBackendBaseUrl } from "@/lib/backend";
 
-const BACKEND_URL = "http://localhost:3000";
 export interface BackendMessage {
   id: number;
   content: string;
@@ -11,6 +11,7 @@ export interface BackendMessage {
   receiverId: number;
   createdAt: string;
   sender?: { id: number; name: string; role: string };
+  clientTempId?: number;
 }
 
 export interface ConversationSummary {
@@ -33,7 +34,7 @@ export function useChat({ userId, otherUserId }: UseChatOptions) {
   const fetchConversation = useCallback(async (user1Id: number, user2Id: number) => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/messages/conversation/${user1Id}/${user2Id}`);
+      const res = await fetch(buildBackendUrl(`/messages/conversation/${user1Id}/${user2Id}`));
       const data = await res.json();
       setMessages(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -46,7 +47,7 @@ export function useChat({ userId, otherUserId }: UseChatOptions) {
   const fetchConversationsList = useCallback(async () => {
     if (!userId) return;
     try {
-      const res = await fetch(`${BACKEND_URL}/messages/list/${userId}`);
+      const res = await fetch(buildBackendUrl(`/messages/list/${userId}`));
       const data = await res.json();
       setConversations(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -58,7 +59,7 @@ export function useChat({ userId, otherUserId }: UseChatOptions) {
   useEffect(() => {
     if (!userId) return;
 
-    const socket = io(BACKEND_URL, { transports: ["websocket"] });
+    const socket = io(getBackendBaseUrl(), { transports: ["websocket"] });
     socketRef.current = socket;
 
     socket.on("connect", () => {
@@ -72,13 +73,28 @@ export function useChat({ userId, otherUserId }: UseChatOptions) {
     });
 
     socket.on("newMessage", (msg: BackendMessage) => {
-      // Only add the message if it belongs to the active conversation
       setMessages((prev) => {
-        const alreadyExists = prev.some((m) => m.id === msg.id);
-        if (alreadyExists) return prev;
-        return [...prev, msg];
+        const withoutOptimistic =
+          msg.clientTempId !== undefined
+            ? prev.filter((m) => m.id !== msg.clientTempId)
+            : prev;
+
+        // Only add the message if it's not already in the current list
+        const alreadyExists = withoutOptimistic.some((m) => m.id === msg.id);
+        if (alreadyExists) return withoutOptimistic;
+        return [...withoutOptimistic, msg];
       });
       // Refresh conversation list for admin
+      fetchConversationsList();
+    });
+
+    socket.on("chatError", (error: { message?: string; clientTempId?: number }) => {
+      if (error.clientTempId !== undefined) {
+        setMessages((prev) => prev.filter((m) => m.id !== error.clientTempId));
+      }
+      if (error.message) {
+        console.error("Erreur chat:", error.message);
+      }
       fetchConversationsList();
     });
 
@@ -99,9 +115,11 @@ export function useChat({ userId, otherUserId }: UseChatOptions) {
     async (receiverId: number, content: string) => {
       if (!userId || !content.trim()) return;
 
+      const clientTempId = -Date.now();
+
       // Optimistic update: add message immediately to the UI
       const optimisticMsg: BackendMessage = {
-        id: Date.now(), // temporary id
+        id: clientTempId,
         content,
         senderId: userId,
         receiverId,
@@ -110,23 +128,43 @@ export function useChat({ userId, otherUserId }: UseChatOptions) {
       };
       setMessages((prev) => [...prev, optimisticMsg]);
 
-      // Send via WebSocket (server will save to DB and emit to receiver)
+      // Send via WebSocket (server saves to DB and emits to receiver/sender)
       if (socketRef.current?.connected) {
-        socketRef.current.emit("sendMessage", { senderId: userId, receiverId, content });
+        socketRef.current.emit("sendMessage", {
+          senderId: userId,
+          receiverId,
+          content,
+          clientTempId,
+        });
       } else {
         // Fallback: use REST API if socket is not connected
         try {
-          await fetch(`${BACKEND_URL}/messages`, {
+          const response = await fetch(buildBackendUrl("/messages"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ senderId: userId, receiverId, content }),
           });
+
+          if (!response.ok) {
+            const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+            throw new Error(payload?.message || "Échec envoi message");
+          }
+
+          const saved = (await response.json()) as BackendMessage;
+          setMessages((prev) => {
+            const withoutOptimistic = prev.filter((m) => m.id !== clientTempId);
+            const alreadyExists = withoutOptimistic.some((m) => m.id === saved.id);
+            if (alreadyExists) return withoutOptimistic;
+            return [...withoutOptimistic, saved];
+          });
+          fetchConversationsList();
         } catch (err) {
+          setMessages((prev) => prev.filter((m) => m.id !== clientTempId));
           console.error("Erreur envoi message (REST fallback):", err);
         }
       }
     },
-    [userId]
+    [userId, fetchConversationsList]
   );
 
   return {

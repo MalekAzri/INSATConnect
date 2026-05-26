@@ -65,24 +65,34 @@ export async function backendFetchJson<T>(path: string, init?: RequestInit): Pro
 }
 
 export async function backendGraphQLFetchJson<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
+  type GraphQLErrorPayload = { message?: string };
+  type GraphQLResponse = {
+    data?: T;
+    errors?: GraphQLErrorPayload[];
+  };
+
   const response = await backendFetch('/graphql', {
     method: 'POST',
     body: JSON.stringify({ query, variables }),
   });
 
-  let json: any;
+  let json: GraphQLResponse;
   try {
-    json = await response.json();
+    json = (await response.json()) as GraphQLResponse;
   } catch (err) {
     throw new Error(`Réponse GraphQL invalide reçue du backend: ${String(err)}`);
   }
 
   if (!response.ok || json.errors) {
     const message = json.errors
-      ? json.errors.map((error: any) => error.message).join(', ')
+      ? json.errors.map((error) => error.message ?? 'GraphQL error').join(', ')
       : `${response.status} ${response.statusText}`;
     throw new Error(message);
   }
 
-  return json.data as T;
+  if (json.data === undefined) {
+    throw new Error('Réponse GraphQL sans champ data.');
+  }
+
+  return json.data;
 }

@@ -1,7 +1,13 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL ?? 'file:./dev.db',
+    },
+  },
+});
 
 async function main() {
   // Create admin user (ID 1)

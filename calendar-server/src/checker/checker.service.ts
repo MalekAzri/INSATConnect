@@ -1,52 +1,57 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
-import { AcademicDate } from '../dates/entities/academic-date.entity';
 import { WebhookService } from '../webhook/webhook.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class CheckerService {
   private readonly logger = new Logger(CheckerService.name);
 
   constructor(
-    @InjectRepository(AcademicDate)
-    private readonly repo: Repository<AcademicDate>,
+    private readonly prisma: PrismaService,
     private readonly webhookService: WebhookService,
     private readonly config: ConfigService,
   ) {}
 
-  // Se déclenche chaque jour à 7h00
   @Cron('0 7 * * *')
   async checkDeadlines(): Promise<void> {
-    this.logger.log(' Vérification des échéances...');
+    this.logger.log('Verification des echeances...');
 
-    const alertDays = this.config.get<number>('ALERT_DAYS_BEFORE', 3);
+    const alertDaysEnv = this.config.get<string>('ALERT_DAYS_BEFORE');
+    const alertDays = Number.isFinite(Number(alertDaysEnv))
+      ? Number(alertDaysEnv)
+      : 3;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const dates = await this.repo.find({ where: { notificationSent: false } });
+    const dates = await this.prisma.academicDate.findMany({
+      where: { notificationSent: false },
+    });
 
     for (const entry of dates) {
       const deadline = new Date(entry.date);
       deadline.setHours(0, 0, 0, 0);
 
-      const diffMs   = deadline.getTime() - today.getTime();
+      const diffMs = deadline.getTime() - today.getTime();
       const daysLeft = Math.round(diffMs / (1000 * 60 * 60 * 24));
 
       if (daysLeft <= alertDays && daysLeft >= 0) {
-        this.logger.warn(` Échéance proche : ${entry.key} dans ${daysLeft} jour(s)`);
+        this.logger.warn(
+          `Echeance proche: ${entry.key} dans ${daysLeft} jour(s)`,
+        );
 
         await this.webhookService.sendAlert({
-          type:       entry.key,
+          type: entry.key,
           targetRole: entry.targetRole,
-          date:       entry.date,
+          date: entry.date,
           daysLeft,
         });
 
-        // Marquer comme notifié pour ne pas renvoyer chaque jour
-        await this.repo.update(entry.id, { notificationSent: true });
+        await this.prisma.academicDate.update({
+          where: { id: entry.id },
+          data: { notificationSent: true },
+        });
       }
     }
 

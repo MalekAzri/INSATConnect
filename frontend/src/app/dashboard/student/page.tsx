@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { useUser, UserRole } from "@/context/UserContext";
+import { useUser } from "@/context/UserContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CalendarGrid, { CalendarEvent } from "@/components/Calendar";
@@ -16,8 +16,6 @@ import {
   FileText, 
   MessageSquare, 
   Calendar, 
-  GraduationCap, 
-  User, 
   LogOut, 
   Send, 
   Upload, 
@@ -25,14 +23,20 @@ import {
   CheckCircle2, 
   AlertTriangle,
   MessageCircle,
-  FileSpreadsheet,
-  RefreshCw,
   Sparkles,
   BookOpen,
   SendHorizontal
 } from "lucide-react";
 
 // Types
+interface PublicationGradeLine {
+  subject: string;
+  studentId: string;
+  studentName: string;
+  examType: string;
+  grade: string;
+}
+
 interface Post {
   id: string;
   title: string;
@@ -40,25 +44,11 @@ interface Post {
   content: string;
   date: string;
   author: string;
-  targetYear?: string; // e.g. "GL3"
+  targetYear?: string;
   fileName?: string;
   fileSize?: string;
   fileUrl?: string;
-  grades?: { subject: string; ds: string; exam: string; avg: string }[];
-}
-
-interface BackendPublication {
-  id: string;
-  title: string;
-  category: string;
-  content: string;
-  author: string;
-  targetYear?: string | null;
-  fileName?: string | null;
-  fileSizeBytes?: number | null;
-  filePath?: string | null;
-  createdAt: string;
-  grades?: { subject: string; ds: string; exam: string; avg: string }[] | null;
+  grades?: PublicationGradeLine[];
 }
 
 interface GraphqlPublication {
@@ -72,6 +62,7 @@ interface GraphqlPublication {
   fichierUrl?: string | null;
   fileName?: string | null;
   fileSize?: string | null;
+  grades?: PublicationGradeLine[] | null;
 }
 
 interface GraphqlAcademicEvent {
@@ -88,20 +79,6 @@ const formatPostDate = (iso: string) => {
   return d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 };
 
-const toStudentPost = (p: BackendPublication): Post => ({
-  id: p.id,
-  title: p.title,
-  category: p.category as Post["category"],
-  content: p.content,
-  date: formatPostDate(p.createdAt),
-  author: p.author,
-  targetYear: p.targetYear ?? undefined,
-  fileName: p.fileName ?? undefined,
-  fileSize: p.fileSizeBytes ? `${(p.fileSizeBytes / (1024 * 1024)).toFixed(2)} Mo` : undefined,
-  fileUrl: p.filePath ? buildBackendUrl(p.filePath) : undefined,
-  grades: p.grades ?? undefined,
-});
-
 const toStudentPostFromGraphql = (p: GraphqlPublication): Post => ({
   id: p.id,
   title: p.titre,
@@ -113,6 +90,7 @@ const toStudentPostFromGraphql = (p: GraphqlPublication): Post => ({
   fileName: p.fileName ?? undefined,
   fileSize: p.fileSize ?? undefined,
   fileUrl: p.fichierUrl ?? undefined,
+  grades: p.grades ?? undefined,
 });
 
 interface RoomPost {
@@ -141,11 +119,11 @@ interface Room {
   posts: RoomPost[];
 }
 
-interface ChatMessage {
-  id: string;
-  sender: "student" | "admin";
-  content: string;
-  time: string;
+interface RealtimeNotification {
+  id: string | number;
+  type: string;
+  message?: string;
+  timestamp?: string;
 }
 
 const mapAcademicEventsToCalendarEvents = (events: GraphqlAcademicEvent[]): CalendarEvent[] => {
@@ -176,17 +154,16 @@ const mapAcademicEventsToCalendarEvents = (events: GraphqlAcademicEvent[]): Cale
 
 export default function StudentDashboard() {
   const router = useRouter();
-  const { user, logout, updateYear, login } = useUser();
+  const { user, logout, updateYear } = useUser();
   const [activeTab, setActiveTab] = useState<"feed" | "chat" | "rooms" | "calendar">("feed");
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [backendCalendarEvents, setBackendCalendarEvents] = useState<CalendarEvent[]>([]);
   const [allFeedPosts, setAllFeedPosts] = useState<Post[]>([]);
-  const [realtimeNotifications, setRealtimeNotifications] = useState<any[]>([]);
+  const [realtimeNotifications, setRealtimeNotifications] = useState<RealtimeNotification[]>([]);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   // Custom states for interactivity
   const [commentsState, setCommentsState] = useState<{ [postId: string]: string }>({});
-  const [newCommentVal, setNewCommentVal] = useState("");
   const [homeworkFile, setHomeworkFile] = useState<File | null>(null);
   const [homeworkStatus, setHomeworkStatus] = useState<{ [roomId: string]: boolean }>({});
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -231,16 +208,25 @@ export default function StudentDashboard() {
       .then(data => {
         setAllFeedPosts(Array.isArray(data?.publications) ? data.publications.map(toStudentPostFromGraphql) : []);
       })
-      .catch(() => {});
+      .catch((error) => {
+        console.error("Failed to load student publications feed", error);
+      });
   }, [user.year]);
 
   useEffect(() => {
     loadFeed();
   }, [loadFeed]);
 
+  function showToast(msg: string) {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 4000);
+  }
+
   useEffect(() => {
     // 1. Fetch initial history from DB
-    backendFetchJson<any[]>(`/student-agent/notifications/history?role=student&year=${user.year || "GL3"}`)
+    backendFetchJson<RealtimeNotification[]>(`/student-agent/notifications/history?role=student&year=${user.year || "GL3"}`)
       .then(history => {
         if (Array.isArray(history)) {
           setRealtimeNotifications(history);
@@ -254,10 +240,10 @@ export default function StudentDashboard() {
 
     const handleSseEvent = (event: MessageEvent) => {
       try {
-        const data = JSON.parse(event.data);
+        const data = JSON.parse(event.data) as RealtimeNotification;
         if (data.type === 'heartbeat') return;
 
-        if (data.type === 'publication.created') {
+        if (data.type === 'publication.created' || data.type === 'grades.published') {
           loadFeed();
         }
 
@@ -276,10 +262,12 @@ export default function StudentDashboard() {
 
     source.addEventListener('message', handleSseEvent);
     source.addEventListener('publication.created', handleSseEvent);
+    source.addEventListener('grades.published', handleSseEvent);
 
     return () => {
       source.removeEventListener('message', handleSseEvent);
       source.removeEventListener('publication.created', handleSseEvent);
+      source.removeEventListener('grades.published', handleSseEvent);
       source.close();
     };
   }, [user.year]);
@@ -301,104 +289,139 @@ export default function StudentDashboard() {
     }
   };
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 4000);
-  };
-
-  // Profile Form State
-  const [profileYear, setProfileYear] = useState(user.year || "GL3");
-  useEffect(() => {
-    if (user.year) {
-      setProfileYear(user.year);
-    }
-  }, [user.year]);
-
-  const handleProfileUpdate = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateYear(profileYear);
-    showToast(`Année universitaire mise à jour avec succès en ${profileYear} !`);
-    // Reset room selected just in case active rooms change
-    setSelectedRoomId(null);
-  };
-
-
   // Filter posts based on student's university year.
   // Note: general posts have no targetYear. Grades posts specify targetYear and are filtered.
-  const filteredFeedPosts = allFeedPosts.filter(
-    (post) => !post.targetYear || post.targetYear === user.year
-  );
+  const normalizedUserYear = (user.year || "GL3").trim().toUpperCase();
+  const filteredFeedPosts = allFeedPosts.filter((post) => {
+    if (!post.targetYear) return true;
+    return post.targetYear.trim().toUpperCase() === normalizedUserYear;
+  });
 
   // Dynamic storage of custom room comments and homework submission state
   const [roomsState, setRoomsState] = useState<Room[]>([]);
 
-  // Active rooms based on student's year selection
-  const activeRooms = roomsState.filter(room => room.targetYear === user.year);
+  const roomGradients = [
+    "from-blue-500 to-indigo-600",
+    "from-teal-500 to-emerald-600",
+    "from-purple-500 to-fuchsia-600",
+    "from-rose-500 to-orange-500",
+  ];
+  const getRoomGradient = (id: string) => {
+    let hash = 0;
+    for (const c of id) hash = (hash * 31 + c.charCodeAt(0)) % roomGradients.length;
+    return roomGradients[hash];
+  };
+
+  useEffect(() => {
+    const loadRooms = async () => {
+      try {
+        const data = await backendFetchJson<any[]>("/teacher/rooms");
+        setRoomsState(data.map((r) => ({
+          id: r.id,
+          name: r.name,
+          prof: r.teacherId || "Enseignant",
+          profTitle: "Enseignant",
+          bgGradient: getRoomGradient(r.id),
+          targetYear: r.targetYear,
+          homework: r.homeworks?.length > 0 ? {
+            id: r.homeworks[0].id,
+            title: r.homeworks[0].title,
+            description: r.homeworks[0].description,
+            deadline: typeof r.homeworks[0].deadline === "string"
+              ? r.homeworks[0].deadline.slice(0, 10)
+              : r.homeworks[0].deadline,
+            submitted: (r.homeworks[0].submissions ?? []).some(
+              (s: any) => s.studentName === (user.name || "")
+            ),
+          } : undefined,
+          posts: (r.posts ?? []).map((p: any) => ({
+            id: p.id,
+            author: r.teacherId || "Enseignant",
+            avatar: (r.teacherId?.[0] ?? "P").toUpperCase(),
+            date: "Récemment",
+            content: p.content,
+            comments: (p.comments ?? []).map((c: any) => ({
+              id: c.id,
+              author: c.authorName,
+              content: c.content,
+              date: new Date(c.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }),
+            })),
+          })),
+        })));
+      } catch {
+        console.error("Impossible de charger les salles.");
+      }
+    };
+    void loadRooms();
+  }, []);
+
+  // Active rooms based on student's year selection (case-insensitive)
+  const normalizedStudentYear = (user.year || "GL3").trim().toUpperCase();
+  const activeRooms = roomsState.filter(
+    room => room.targetYear.trim().toUpperCase() === normalizedStudentYear
+  );
 
   // Active room data helper
   const selectedRoom = activeRooms.find(r => r.id === selectedRoomId);
 
-  // Leave comment under a prof post
-  const handleAddComment = (roomId: string, postId: string) => {
+  // Leave comment under a prof post — persisté en base
+  const handleAddComment = async (roomId: string, postId: string) => {
     const commentText = commentsState[postId];
-    if (!commentText || !commentText.trim()) return;
+    if (!commentText?.trim()) return;
 
-    const newComment = {
-      id: Date.now().toString(),
-      author: user.name || "Étudiant INSAT",
-      content: commentText,
-      date: "À l'instant"
-    };
+    try {
+      const created = await backendFetchJson<any>(`/teacher/posts/${postId}/comments`, {
+        method: "POST",
+        body: JSON.stringify({ content: commentText.trim(), authorName: user.name || "Étudiant" }),
+      });
 
-    setRoomsState(prev => prev.map(room => {
-      if (room.id === roomId) {
+      const newComment = {
+        id: created.id,
+        author: created.authorName,
+        content: created.content,
+        date: "À l'instant",
+      };
+
+      setRoomsState(prev => prev.map(room => {
+        if (room.id !== roomId) return room;
         return {
           ...room,
-          posts: room.posts.map(post => {
-            if (post.id === postId) {
-              return {
-                ...post,
-                comments: [...post.comments, newComment]
-              };
-            }
-            return post;
-          })
+          posts: room.posts.map(post =>
+            post.id === postId ? { ...post, comments: [...post.comments, newComment] } : post
+          ),
         };
-      }
-      return room;
-    }));
+      }));
 
-    // Reset comment input state
-    setCommentsState(prev => ({
-      ...prev,
-      [postId]: ""
-    }));
-
-    showToast("Commentaire publié avec succès !");
+      setCommentsState(prev => ({ ...prev, [postId]: "" }));
+      showToast("Commentaire publié avec succès !");
+    } catch {
+      showToast("Impossible d'envoyer le commentaire.");
+    }
   };
 
-  const handleHomeworkSubmit = (roomId: string) => {
-    setHomeworkStatus(prev => ({
-      ...prev,
-      [roomId]: true
-    }));
-    setRoomsState(prev => prev.map(room => {
-      if (room.id === roomId && room.homework) {
-        return {
-          ...room,
-          homework: {
-            ...room.homework,
-            submitted: true
-          }
-        };
-      }
-      return room;
-    }));
+  const handleHomeworkSubmit = async (roomId: string) => {
+    const room = roomsState.find(r => r.id === roomId);
+    if (!room?.homework) return;
 
-    setHomeworkFile(null);
-    showToast("Votre devoir a été transmis à l'enseignant avec succès !");
+    try {
+      await backendFetchJson(`/teacher/homeworks/${room.homework.id}/submit`, {
+        method: "POST",
+        body: JSON.stringify({ studentName: user.name || "Étudiant" }),
+      });
+
+      setHomeworkStatus(prev => ({ ...prev, [roomId]: true }));
+      setRoomsState(prev => prev.map(r => {
+        if (r.id === roomId && r.homework) {
+          return { ...r, homework: { ...r.homework, submitted: true } };
+        }
+        return r;
+      }));
+
+      setHomeworkFile(null);
+      showToast("Votre devoir a été transmis à l'enseignant avec succès !");
+    } catch {
+      showToast("Impossible de soumettre le devoir.");
+    }
   };
 
   // Chat message send - connected to real backend
@@ -735,7 +758,7 @@ export default function StudentDashboard() {
                           )}
 
                           {/* Targeted Grade Lists */}
-                          {post.category === "notes" && post.grades && (
+                          {post.category === "notes" && post.grades && post.grades.length > 0 && (
                             <div className="mt-4 border border-teal-50 rounded-2xl overflow-hidden shadow-inner bg-teal-50/10">
                               <div className="bg-teal-500/10 px-4 py-2.5 border-b border-teal-100 flex items-center justify-between text-teal-800">
                                 <span className="text-[10px] font-extrabold">Relevé de notes - Promotion {user.year}</span>
@@ -745,19 +768,25 @@ export default function StudentDashboard() {
                                 <table className="w-full text-[11px] font-semibold text-slate-700 text-left border-collapse">
                                   <thead>
                                     <tr className="border-b border-slate-100 text-slate-400 text-[10px] uppercase font-extrabold bg-slate-50/50">
-                                      <th className="p-3">Matière / Module</th>
-                                      <th className="p-3 text-center">Note DS</th>
-                                      <th className="p-3 text-center">Note Examen</th>
-                                      <th className="p-3 text-center">Moyenne Finale</th>
+                                      <th className="p-3">Matière</th>
+                                      <th className="p-3">Matricule</th>
+                                      <th className="p-3">Nom Prénom</th>
+                                      <th className="p-3 text-center">Type</th>
+                                      <th className="p-3 text-center">Note /20</th>
                                     </tr>
                                   </thead>
                                   <tbody>
                                     {post.grades.map((grade, idx) => (
                                       <tr key={idx} className="border-b border-slate-100 hover:bg-teal-50/20">
                                         <td className="p-3 font-bold text-slate-800">{grade.subject}</td>
-                                        <td className="p-3 text-center text-slate-500">{grade.ds}</td>
-                                        <td className="p-3 text-center text-slate-500">{grade.exam}</td>
-                                        <td className="p-3 text-center font-extrabold text-blue-600">{grade.avg}</td>
+                                        <td className="p-3 text-slate-500">{grade.studentId}</td>
+                                        <td className="p-3 text-slate-700">{grade.studentName}</td>
+                                        <td className="p-3 text-center">
+                                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold ${grade.examType === "DS" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
+                                            {grade.examType}
+                                          </span>
+                                        </td>
+                                        <td className="p-3 text-center font-extrabold text-blue-600">{grade.grade}</td>
                                       </tr>
                                     ))}
                                   </tbody>

@@ -69,13 +69,28 @@ export class NotificationsService {
 
   async getHistory(role: NotificationRole, year?: string): Promise<NotificationEventData[]> {
     const subscriberYear = year?.trim().toUpperCase();
-    
-    // We fetch all notifications and filter them in memory like matches()
-    // or we can build a prisma where clause
-    const notifications = await this.prisma.notification.findMany({
-      orderBy: { timestamp: 'desc' },
-      take: 50,
-    });
+
+    let notifications: Array<{
+      id: number;
+      type: string;
+      message: string;
+      role: string;
+      targetYear: string | null;
+      data: string | null;
+      timestamp: Date;
+    }> = [];
+
+    try {
+      notifications = await this.prisma.notification.findMany({
+        orderBy: { timestamp: 'desc' },
+        take: 50,
+      });
+    } catch (error) {
+      if (this.isMissingTableError(error, 'Notification')) {
+        return [];
+      }
+      throw error;
+    }
 
     return notifications
       .map(n => ({
@@ -84,10 +99,30 @@ export class NotificationsService {
         message: n.message,
         role: n.role as NotificationRole,
         targetYear: n.targetYear,
-        data: n.data ? JSON.parse(n.data) : null,
+        data: this.safeParseJson(n.data),
         timestamp: n.timestamp.toISOString(),
       }))
       .filter(event => this.matches(event, role, subscriberYear));
+  }
+
+  private safeParseJson(raw: string | null): Record<string, unknown> | undefined {
+    if (!raw) return undefined;
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+      return undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private isMissingTableError(error: unknown, modelName: string): boolean {
+    if (!error || typeof error !== 'object') return false;
+    const code = (error as { code?: string }).code;
+    const meta = (error as { meta?: { modelName?: string } }).meta;
+    return code === 'P2021' && meta?.modelName === modelName;
   }
 
   private matches(

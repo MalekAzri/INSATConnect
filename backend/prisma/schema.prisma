@@ -84,10 +84,12 @@ model GradeSubmission {
   teacherName   String
   teacherEmail  String?
   targetYear    String
-  semester      String?
+  semester      String    @default("")
+  subject       String    @default("")
+  examType      String    @default("DS")
   title         String
   summary       String?
-  entries       String    // Stores serialized array of GradeEntry
+  entries       String    // Stores serialized array of StudentGrade
   status        String    @default("pending")
   validatedBy   String?
   validatedAt   DateTime?
@@ -119,20 +121,37 @@ model Room {
 }
 
 model Post {
-  id      String @id @default(cuid())
-  content String
-  type    String @default("announcement")
+  id       String        @id @default(cuid())
+  content  String
+  type     String        @default("announcement")
+  roomId   String
+  room     Room          @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  comments PostComment[]
+}
 
-  roomId String
-  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+model PostComment {
+  id         String   @id @default(cuid())
+  content    String
+  authorName String
+  postId     String
+  post       Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
 }
 
 model Homework {
-  id          String   @id @default(cuid())
+  id          String              @id @default(cuid())
   title       String
   description String
   deadline    DateTime
+  roomId      String
+  room        Room                @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  submissions HomeworkSubmission[]
+}
 
-  roomId String
-  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+model HomeworkSubmission {
+  id          String   @id @default(cuid())
+  studentName String
+  homeworkId  String
+  homework    Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  submittedAt DateTime @default(now())
 }

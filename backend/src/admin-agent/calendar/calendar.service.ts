@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   PatchAcademicCalendarDto,
@@ -15,9 +19,16 @@ export class CalendarService {
   ) {}
 
   async getConfig(): Promise<AcademicCalendarConfig | null> {
-    return this.prisma.academicCalendarConfig.findFirst({
-      orderBy: { updatedAt: 'desc' },
-    });
+    try {
+      return await this.prisma.academicCalendarConfig.findFirst({
+        orderBy: { updatedAt: 'desc' },
+      });
+    } catch (error) {
+      if (this.isMissingTableError(error, 'AcademicCalendarConfig')) {
+        return null;
+      }
+      throw error;
+    }
   }
 
   async upsertConfig(dto: UpsertAcademicCalendarDto, syncCalendar = true) {
@@ -50,15 +61,20 @@ export class CalendarService {
       updatedBy: dto.updatedBy?.trim() || current?.updatedBy || 'Agent admin',
     };
 
-    if (current) {
-      saved = await this.prisma.academicCalendarConfig.update({
-        where: { id: current.id },
-        data,
-      });
-    } else {
-      saved = await this.prisma.academicCalendarConfig.create({
-        data,
-      });
+    try {
+      if (current) {
+        saved = await this.prisma.academicCalendarConfig.update({
+          where: { id: current.id },
+          data,
+        });
+      } else {
+        saved = await this.prisma.academicCalendarConfig.create({
+          data,
+        });
+      }
+    } catch (error) {
+      this.rethrowStorageError(error, 'AcademicCalendarConfig');
+      throw error;
     }
 
     const sync = await this.trySync(saved, syncCalendar);
@@ -84,10 +100,16 @@ export class CalendarService {
       data[key] = value;
     }
 
-    const saved = await this.prisma.academicCalendarConfig.update({
-      where: { id: current.id },
-      data,
-    });
+    let saved: AcademicCalendarConfig;
+    try {
+      saved = await this.prisma.academicCalendarConfig.update({
+        where: { id: current.id },
+        data,
+      });
+    } catch (error) {
+      this.rethrowStorageError(error, 'AcademicCalendarConfig');
+      throw error;
+    }
 
     const sync = await this.trySync(saved, syncCalendar);
 
@@ -117,6 +139,21 @@ export class CalendarService {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { synced: false, reason: message };
+    }
+  }
+
+  private isMissingTableError(error: unknown, modelName: string): boolean {
+    if (!error || typeof error !== 'object') return false;
+    const code = (error as { code?: string }).code;
+    const meta = (error as { meta?: { modelName?: string } }).meta;
+    return code === 'P2021' && meta?.modelName === modelName;
+  }
+
+  private rethrowStorageError(error: unknown, modelName: string): void {
+    if (this.isMissingTableError(error, modelName)) {
+      throw new ServiceUnavailableException(
+        `Table Prisma ${modelName} introuvable. Exécutez les migrations Prisma avant de générer le calendrier.`,
+      );
     }
   }
 }

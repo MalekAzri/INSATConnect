@@ -28,7 +28,9 @@ export class GradesService {
       teacherName: sub.teacherName,
       teacherEmail: sub.teacherEmail,
       targetYear: sub.targetYear,
-      semester: sub.semester,
+      semester: sub.semester ?? '',
+      subject: sub.subject ?? '',
+      examType: (sub.examType === 'EXAM' ? 'EXAM' : 'DS') as 'DS' | 'EXAM',
       title: sub.title,
       summary: sub.summary,
       entries: typeof sub.entries === 'string' ? JSON.parse(sub.entries) : sub.entries,
@@ -49,7 +51,9 @@ export class GradesService {
         teacherName: dto.teacherName.trim(),
         teacherEmail: dto.teacherEmail?.trim() || null,
         targetYear: dto.targetYear.trim().toUpperCase(),
-        semester: dto.semester?.trim() || null,
+        semester: dto.semester.trim(),
+        subject: dto.subject.trim(),
+        examType: dto.examType,
         title: dto.title.trim(),
         summary: dto.summary?.trim() || null,
         entries: JSON.stringify(dto.entries),
@@ -71,12 +75,20 @@ export class GradesService {
       where.targetYear = { equals: query.targetYear.trim().toUpperCase() };
     }
 
-    const submissions = await this.prisma.gradeSubmission.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      skip: query.offset ? Number(query.offset) : 0,
-      take: query.limit ? Number(query.limit) : 50,
-    });
+    let submissions: any[] = [];
+    try {
+      submissions = await this.prisma.gradeSubmission.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: query.offset ? Number(query.offset) : 0,
+        take: query.limit ? Number(query.limit) : 50,
+      });
+    } catch (error) {
+      if (this.isMissingTableError(error, 'GradeSubmission')) {
+        return [];
+      }
+      throw error;
+    }
 
     return submissions.map((s) => this.mapGradeSubmission(s));
   }
@@ -136,10 +148,11 @@ export class GradesService {
 
     const gradesForPublication = parsedSubmissions.flatMap((submission) =>
       submission.entries.map((entry) => ({
-        subject: `${entry.studentName} - ${entry.subject}`,
-        ds: entry.ds.toFixed(2),
-        exam: entry.exam.toFixed(2),
-        avg: entry.avg.toFixed(2),
+        subject: submission.subject,
+        studentId: entry.studentId,
+        studentName: `${entry.lastName} ${entry.firstName}`,
+        examType: submission.examType,
+        grade: entry.grade.toFixed(2),
       })),
     );
 
@@ -205,5 +218,12 @@ export class GradesService {
       submissionsUpdated: submissions.length,
       targetYear,
     };
+  }
+
+  private isMissingTableError(error: unknown, modelName: string): boolean {
+    if (!error || typeof error !== 'object') return false;
+    const code = (error as { code?: string }).code;
+    const meta = (error as { meta?: { modelName?: string } }).meta;
+    return code === 'P2021' && meta?.modelName === modelName;
   }
 }
