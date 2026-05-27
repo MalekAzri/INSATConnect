@@ -58,7 +58,7 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 /generated/prisma
 
 # SQLite database
-dev.db
+!dev.db
 *.db
 *.db-journal
 
