@@ -12,6 +12,7 @@ interface GraphqlContext {
   req?: {
     user?: {
       id: number;
+      role?: string;
       promo?: string;
       name?: string;
     };
@@ -170,7 +171,20 @@ const mapAdminGradeSubmission = (submission: AnyRecord) => ({
   updatedAt: toIso(submission.updatedAt),
 });
 
-const buildAcademicEventsFromConfig = (config: AnyRecord) => {
+const isTeacherRole = (role?: string | null): boolean => {
+  const normalized = role?.trim().toLowerCase();
+  return (
+    normalized === 'teacher' ||
+    normalized === 'enseignant' ||
+    normalized === 'professeur' ||
+    normalized === 'prof'
+  );
+};
+
+const buildAcademicEventsFromConfig = (
+  config: AnyRecord,
+  options?: { includeGradeDeadlines?: boolean },
+) => {
   const events: Array<{
     id: string;
     nom: string;
@@ -179,6 +193,7 @@ const buildAcademicEventsFromConfig = (config: AnyRecord) => {
     type: string;
   }> = [];
   let idx = 1;
+  const includeGradeDeadlines = options?.includeGradeDeadlines === true;
 
   const addEvent = (
     nom: string,
@@ -196,13 +211,25 @@ const buildAcademicEventsFromConfig = (config: AnyRecord) => {
   };
 
   addEvent('DS Semestre 1', config.s1_ds, 'DS');
+  if (includeGradeDeadlines) {
+    addEvent('Remise Notes DS S1', config.s1_grades_ds, 'DELIBERATION');
+  }
   addEvent('Affichage Notes DS S1', config.s1_publish_ds, 'AFFICHAGE');
   addEvent('Examen Semestre 1', config.s1_exam, 'EXAMEN');
+  if (includeGradeDeadlines) {
+    addEvent('Remise Notes Examen S1', config.s1_grades_exam, 'DELIBERATION');
+  }
   addEvent('Affichage Notes Examen S1', config.s1_publish_exam, 'AFFICHAGE');
   addEvent('Délibération Semestre 1', config.s1_delib, 'DELIBERATION');
   addEvent('DS Semestre 2', config.s2_ds, 'DS');
+  if (includeGradeDeadlines) {
+    addEvent('Remise Notes DS S2', config.s2_grades_ds, 'DELIBERATION');
+  }
   addEvent('Affichage Notes DS S2', config.s2_publish_ds, 'AFFICHAGE');
   addEvent('Examen Semestre 2', config.s2_exam, 'EXAMEN');
+  if (includeGradeDeadlines) {
+    addEvent('Remise Notes Examen S2', config.s2_grades_exam, 'DELIBERATION');
+  }
   addEvent('Affichage Notes Examen S2', config.s2_publish_exam, 'AFFICHAGE');
   addEvent('Délibération Semestre 2', config.s2_delib, 'DELIBERATION');
   addEvent('Délibération Finale', config.deliberationFinale, 'DELIBERATION');
@@ -465,22 +492,36 @@ export const createApolloResolvers = (
         .filter((row): row is NonNullable<typeof row> => row !== null);
     },
 
-    calendrierAcademique: async () => {
+    calendrierAcademique: async (
+      _parent: unknown,
+      _args: unknown,
+      context?: GraphqlContext,
+    ) => {
       const configs = await prisma.academicCalendarConfig.findMany({
         orderBy: { createdAt: 'desc' },
       });
 
       if (!configs.length) return [];
-      return buildAcademicEventsFromConfig(configs[0] as AnyRecord);
+      const includeGradeDeadlines = isTeacherRole(context?.req?.user?.role);
+      return buildAcademicEventsFromConfig(configs[0] as AnyRecord, {
+        includeGradeDeadlines,
+      });
     },
 
-    academicEvent: async (_parent: unknown, args: { id: string }) => {
+    academicEvent: async (
+      _parent: unknown,
+      args: { id: string },
+      context?: GraphqlContext,
+    ) => {
       const configs = await prisma.academicCalendarConfig.findMany({
         orderBy: { createdAt: 'desc' },
       });
       if (!configs.length) return null;
 
-      const events = buildAcademicEventsFromConfig(configs[0] as AnyRecord);
+      const includeGradeDeadlines = isTeacherRole(context?.req?.user?.role);
+      const events = buildAcademicEventsFromConfig(configs[0] as AnyRecord, {
+        includeGradeDeadlines,
+      });
       return events.find((event) => event.id === args.id) ?? null;
     },
 
