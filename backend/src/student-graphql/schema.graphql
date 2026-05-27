@@ -77,6 +77,7 @@ type Publication {
 type Query {
   # Liste des publications ciblées pour l'étudiant
   publications(targetYear: String): [Publication!]!
+  publication(id: ID!): Publication
 
   # Liste allégée des documents
   documents(categorie: String): [Document]!
@@ -93,4 +94,5 @@ type Query {
   
   # Calendrier académique (commun)
   calendrierAcademique: [AcademicEvent!]!
+  academicEvent(id: ID!): AcademicEvent
 }

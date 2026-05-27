@@ -35,6 +35,34 @@ export class MessagesService {
     });
   }
 
+  async getPendingMessagesForReceiver(userId: number) {
+    return this.prisma.message.findMany({
+      where: {
+        receiverId: userId,
+        deliveredAt: null,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+      include: {
+        sender: {
+          select: { id: true, name: true, role: true },
+        },
+        receiver: {
+          select: { id: true, name: true, role: true },
+        },
+      },
+    });
+  }
+
+  async markMessagesDelivered(messageIds: number[]) {
+    if (!messageIds.length) return;
+    await this.prisma.message.updateMany({
+      where: { id: { in: messageIds } },
+      data: { deliveredAt: new Date() },
+    });
+  }
+
   async getConversation(user1Id: number, user2Id: number) {
     return this.prisma.message.findMany({
       where: {

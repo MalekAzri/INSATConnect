@@ -30,14 +30,25 @@ const defaultUserState: UserState = {
 };
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
+const USER_STORAGE_KEY = "insat_connect_user";
+const TOKEN_STORAGE_KEY = "insat_token";
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserState>(defaultUserState);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    // Load from localStorage on client side
-    const stored = localStorage.getItem("insat_connect_user");
+    // Load from sessionStorage on client side (session scoped to tab)
+    let stored = sessionStorage.getItem(USER_STORAGE_KEY);
+    if (!stored) {
+      // Migrate legacy localStorage state once if present.
+      const legacy = localStorage.getItem(USER_STORAGE_KEY);
+      if (legacy) {
+        sessionStorage.setItem(USER_STORAGE_KEY, legacy);
+        localStorage.removeItem(USER_STORAGE_KEY);
+        stored = legacy;
+      }
+    }
     if (stored) {
       try {
         setUser(JSON.parse(stored));
@@ -75,23 +86,27 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     };
 
     setUser(newUserState);
-    localStorage.setItem("insat_connect_user", JSON.stringify(newUserState));
+    sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify(newUserState));
   };
 
   const logout = () => {
     setUser(defaultUserState);
-    localStorage.removeItem("insat_connect_user");
+    sessionStorage.removeItem(USER_STORAGE_KEY);
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    // Cleanup legacy keys if they still exist in the browser.
+    localStorage.removeItem(USER_STORAGE_KEY);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
   };
 
   const updateYear = (year: string) => {
     if (user.role === "student") {
       const updated = { ...user, year };
       setUser(updated);
-      localStorage.setItem("insat_connect_user", JSON.stringify(updated));
+      sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updated));
     }
   };
 
-  // Prevent rendering children before checking localStorage to avoid hydration mismatch
+  // Prevent rendering children before checking sessionStorage to avoid hydration mismatch
   if (!isLoaded) {
     return null;
   }

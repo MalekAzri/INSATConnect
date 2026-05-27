@@ -15,6 +15,15 @@ export class PublicationsService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
+  private normalizeTargetYear(targetYear?: string | null): string | null {
+    const normalized = targetYear?.trim().toUpperCase();
+    if (!normalized) return null;
+    if (normalized === 'TOUS' || normalized === 'ALL' || normalized === '*') {
+      return null;
+    }
+    return normalized;
+  }
+
   private mapToEntity(pub: any): Publication {
     return {
       id: pub.id,
@@ -42,7 +51,7 @@ export class PublicationsService {
         category: dto.category,
         content: dto.content.trim(),
         author: dto.author?.trim() || 'Scolarité INSAT',
-        targetYear: dto.targetYear?.trim().toUpperCase() || null,
+        targetYear: this.normalizeTargetYear(dto.targetYear),
         fileName: file?.originalname ?? null,
         filePath: file ? `/uploads/${file.filename}` : null,
         fileSizeBytes: file?.size ?? null,
@@ -75,9 +84,11 @@ export class PublicationsService {
     }
 
     if (query.targetYear) {
+      const normalizedTarget = this.normalizeTargetYear(query.targetYear);
       where.OR = [
         { targetYear: null },
-        { targetYear: { equals: query.targetYear.trim().toUpperCase() } },
+        { targetYear: { in: ['TOUS', 'ALL', '*'] } },
+        ...(normalizedTarget ? [{ targetYear: { equals: normalizedTarget } }] : []),
       ];
     }
 
@@ -136,7 +147,7 @@ export class PublicationsService {
       data.author = dto.author.trim() || 'Scolarité INSAT';
     }
     if (dto.targetYear !== undefined) {
-      data.targetYear = dto.targetYear ? dto.targetYear.trim().toUpperCase() : null;
+      data.targetYear = this.normalizeTargetYear(dto.targetYear);
     }
     if (dto.grades !== undefined) {
       data.grades = dto.grades?.length ? JSON.stringify(dto.grades) : null;

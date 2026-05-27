@@ -1,10 +1,14 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
-import { PrismaLibSql } from '@prisma/adapter-libsql';
 import * as bcrypt from 'bcrypt';
 
-const adapter = new PrismaLibSql({ url: process.env.DATABASE_URL ?? 'file:./prisma/dev.db' });
-const prisma = new PrismaClient({ adapter } as any);
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL ?? 'file:./dev.db',
+    },
+  },
+});
 
 async function main() {
   const adminHash = await bcrypt.hash('admin123', 10);

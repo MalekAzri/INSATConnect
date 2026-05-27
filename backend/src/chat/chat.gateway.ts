@@ -39,12 +39,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   handleRegister(
     @MessageBody() userId: number,
     @ConnectedSocket() client: Socket,
-  ): void {
+  ): void | Promise<void> {
     const numId = Number(userId);
     if (!numId) return; // rejette les IDs invalides (0, null, NaN)
     const socketId = client.id;
     this.logger.log(`User ${numId} registered with socket ${socketId}`);
     this.userSockets.set(numId, socketId);
+
+    void this.deliverPendingMessages(numId, socketId);
   }
 
   @SubscribeMessage('sendMessage')
@@ -77,6 +79,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const receiverSocketId = this.userSockets.get(receiverId);
       if (receiverSocketId) {
         this.server.to(receiverSocketId).emit('newMessage', emittedMessage);
+        await this.messagesService.markMessagesDelivered([savedMessage.id]);
       } else {
         this.logger.warn(`Receiver ${receiverId} not connected — message saved to DB but not delivered in real-time`);
       }
@@ -94,6 +97,32 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           clientTempId: payload.clientTempId,
         });
       }
+    }
+  }
+
+  private async deliverPendingMessages(
+    userId: number,
+    socketId: string,
+  ): Promise<void> {
+    try {
+      const pendingMessages =
+        await this.messagesService.getPendingMessagesForReceiver(userId);
+      if (!pendingMessages.length) return;
+
+      for (const pending of pendingMessages) {
+        this.server.to(socketId).emit('newMessage', pending);
+      }
+
+      await this.messagesService.markMessagesDelivered(
+        pendingMessages.map((message) => message.id),
+      );
+
+      this.logger.log(
+        `Delivered ${pendingMessages.length} pending message(s) to user ${userId}`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`deliverPendingMessages error: ${message}`);
     }
   }
 }

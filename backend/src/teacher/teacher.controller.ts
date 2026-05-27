@@ -1,4 +1,21 @@
-import { Controller, Get, Post, Body, Param, Patch, Delete, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Patch,
+  Delete,
+  Query,
+  UseGuards,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
+import { existsSync, mkdirSync } from 'fs';
+import { randomUUID } from 'crypto';
 import { TeacherService } from './teacher.service';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { CreatePostDto } from './dto/create-post.dto';
@@ -9,6 +26,34 @@ import { UpdateHomeworkDto } from './dto/update-homework.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { SubmitHomeworkDto } from './dto/submit-homework.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+
+const homeworkUploadsDir = join(process.cwd(), 'uploads', 'homeworks');
+if (!existsSync(homeworkUploadsDir)) {
+  mkdirSync(homeworkUploadsDir, { recursive: true });
+}
+
+const roomPostUploadsDir = join(process.cwd(), 'uploads', 'room-posts');
+if (!existsSync(roomPostUploadsDir)) {
+  mkdirSync(roomPostUploadsDir, { recursive: true });
+}
+
+const homeworkUploadConfig = {
+  storage: diskStorage({
+    destination: (_req, _file, cb) => cb(null, homeworkUploadsDir),
+    filename: (_req, file, cb) =>
+      cb(null, `${randomUUID()}${extname(file.originalname)}`),
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+};
+
+const roomPostUploadConfig = {
+  storage: diskStorage({
+    destination: (_req, _file, cb) => cb(null, roomPostUploadsDir),
+    filename: (_req, file, cb) =>
+      cb(null, `${randomUUID()}${extname(file.originalname)}`),
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+};
 
 @UseGuards(JwtAuthGuard)
 @Controller('teacher')
@@ -48,8 +93,13 @@ export class TeacherController {
 
   // POSTS
   @Post('rooms/:id/posts')
-  createPost(@Param('id') id: string, @Body() dto: CreatePostDto) {
-    return this.teacherService.createPost(id, dto);
+  @UseInterceptors(FileInterceptor('file', roomPostUploadConfig))
+  createPost(
+    @Param('id') id: string,
+    @Body() dto: CreatePostDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.teacherService.createPost(id, dto, file);
   }
 
   @Patch('posts/:id')
@@ -101,8 +151,13 @@ export class TeacherController {
   }
 
   @Post('homeworks/:homeworkId/submit')
-  submitHomework(@Param('homeworkId') homeworkId: string, @Body() dto: SubmitHomeworkDto) {
-    return this.teacherService.submitHomework(homeworkId, dto);
+  @UseInterceptors(FileInterceptor('file', homeworkUploadConfig))
+  submitHomework(
+    @Param('homeworkId') homeworkId: string,
+    @Body() dto: SubmitHomeworkDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.teacherService.submitHomework(homeworkId, dto, file);
   }
 
   @Get('homeworks/:homeworkId/submitted')

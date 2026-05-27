@@ -7,7 +7,15 @@ import Link from "next/link";
 import CalendarGrid, { CalendarEvent } from "@/components/Calendar";
 import { useChat } from "@/hooks/useChat";
 import { backendFetchJson, backendGraphQLFetchJson, buildBackendUrl } from "@/lib/backend";
-import { GET_PUBLICATIONS, GET_ACADEMIC_CALENDAR } from "@/graphql/queries";
+import {
+  CREATE_ROOM_COMMENT,
+  GET_ACADEMIC_EVENT_DETAIL,
+  GET_ACADEMIC_CALENDAR,
+  GET_HOMEWORKS_BY_YEAR,
+  GET_PUBLICATION_DETAIL,
+  GET_PUBLICATIONS,
+  GET_ROOMS,
+} from "@/graphql/queries";
 import { 
   Bell, 
   Menu, 
@@ -55,7 +63,7 @@ interface GraphqlPublication {
   id: string;
   titre: string;
   categorie: string;
-  contenu: string;
+  contenu?: string | null;
   date: string;
   auteur: string;
   targetYear?: string | null;
@@ -79,17 +87,46 @@ const formatPostDate = (iso: string) => {
   return d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 };
 
+const formatFileSize = (bytes?: number | null) => {
+  if (!bytes || bytes <= 0) return "";
+  return `${(bytes / (1024 * 1024)).toFixed(2)} Mo`;
+};
+
+const normalizeTargetYear = (value?: string | null): string | null => {
+  const normalized = value?.trim().toUpperCase();
+  if (!normalized) return null;
+  if (normalized === "TOUS" || normalized === "ALL" || normalized === "*") {
+    return null;
+  }
+  return normalized;
+};
+
+const toPostCategory = (value?: string | null): Post["category"] => {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "urgent") return "urgent";
+  if (normalized === "document") return "document";
+  if (normalized === "notes") return "notes";
+  if (normalized === "planning") return "planning";
+  return "document";
+};
+
+const toAbsoluteFileUrl = (value?: string | null) => {
+  if (!value) return undefined;
+  if (/^https?:\/\//i.test(value)) return value;
+  return buildBackendUrl(value);
+};
+
 const toStudentPostFromGraphql = (p: GraphqlPublication): Post => ({
   id: p.id,
   title: p.titre,
-  category: p.categorie as Post["category"],
-  content: p.contenu,
+  category: toPostCategory(p.categorie),
+  content: p.contenu ?? "",
   date: formatPostDate(p.date),
   author: p.auteur,
   targetYear: p.targetYear ?? undefined,
   fileName: p.fileName ?? undefined,
   fileSize: p.fileSize ?? undefined,
-  fileUrl: p.fichierUrl ?? undefined,
+  fileUrl: toAbsoluteFileUrl(p.fichierUrl),
   grades: p.grades ?? undefined,
 });
 
@@ -99,6 +136,10 @@ interface RoomPost {
   avatar: string;
   date: string;
   content: string;
+  type: "announcement" | "document";
+  fileName?: string;
+  filePath?: string | null;
+  fileSizeBytes?: number | null;
   comments: { id: string; author: string; content: string; date: string }[];
 }
 
@@ -158,7 +199,13 @@ export default function StudentDashboard() {
   const [activeTab, setActiveTab] = useState<"feed" | "chat" | "rooms" | "calendar">("feed");
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [backendCalendarEvents, setBackendCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [academicEventsSummary, setAcademicEventsSummary] = useState<GraphqlAcademicEvent[]>([]);
+  const [academicEventDetailsById, setAcademicEventDetailsById] = useState<Record<string, GraphqlAcademicEvent>>({});
+  const [selectedAcademicEventId, setSelectedAcademicEventId] = useState<string | null>(null);
+  const [loadingAcademicEventId, setLoadingAcademicEventId] = useState<string | null>(null);
   const [allFeedPosts, setAllFeedPosts] = useState<Post[]>([]);
+  const [publicationDetailsById, setPublicationDetailsById] = useState<Record<string, GraphqlPublication>>({});
+  const [loadingPublicationId, setLoadingPublicationId] = useState<string | null>(null);
   const [realtimeNotifications, setRealtimeNotifications] = useState<RealtimeNotification[]>([]);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
@@ -167,6 +214,7 @@ export default function StudentDashboard() {
   const [homeworkFile, setHomeworkFile] = useState<File | null>(null);
   const [homeworkStatus, setHomeworkStatus] = useState<{ [roomId: string]: boolean }>({});
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [roomsReloadToken, setRoomsReloadToken] = useState(0);
   
   // Chat States - connected to real backend
   const ADMIN_USER_ID = 1; // admin user ID as set by the DB seed
@@ -202,12 +250,13 @@ export default function StudentDashboard() {
     const year = user.year || "GL3";
     Promise.all([
       backendGraphQLFetchJson<{ calendrierAcademique: GraphqlAcademicEvent[] }>(GET_ACADEMIC_CALENDAR).catch(() => null),
-      backendFetchJson<any[]>(`/teacher/homeworks/year/${year}`).catch(() => []),
+      backendGraphQLFetchJson<{ homeworksByYear: any[] }>(GET_HOMEWORKS_BY_YEAR, { year }).catch(() => ({ homeworksByYear: [] })),
     ]).then(([calData, homeworks]) => {
+      setAcademicEventsSummary(calData?.calendrierAcademique ?? []);
       const academic = calData?.calendrierAcademique
         ? mapAcademicEventsToCalendarEvents(calData.calendrierAcademique)
         : [];
-      const hwEvents: CalendarEvent[] = (homeworks ?? []).map((hw: any) => ({
+      const hwEvents: CalendarEvent[] = (homeworks?.homeworksByYear ?? []).map((hw: any) => ({
         dayNumber: new Date(hw.deadline).getDate(),
         type: "deadline" as const,
         title: hw.title,
@@ -232,6 +281,59 @@ export default function StudentDashboard() {
   useEffect(() => {
     loadFeed();
   }, [loadFeed]);
+
+  useEffect(() => {
+    setPublicationDetailsById({});
+    setSelectedAcademicEventId(null);
+    setAcademicEventDetailsById({});
+  }, [user.year]);
+
+  const loadPublicationDetail = useCallback(async (publicationId: string) => {
+    if (publicationDetailsById[publicationId]) return;
+
+    try {
+      setLoadingPublicationId(publicationId);
+      const data = await backendGraphQLFetchJson<{ publication: GraphqlPublication | null }>(
+        GET_PUBLICATION_DETAIL,
+        { id: publicationId },
+      );
+      const publication = data.publication;
+      if (!publication) return;
+      setPublicationDetailsById((prev) => ({
+        ...prev,
+        [publicationId]: publication,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erreur inconnue";
+      showToast(`Impossible de charger le détail du post: ${message}`);
+    } finally {
+      setLoadingPublicationId(null);
+    }
+  }, [publicationDetailsById]);
+
+  const loadAcademicEventDetail = useCallback(async (eventId: string) => {
+    setSelectedAcademicEventId(eventId);
+    if (academicEventDetailsById[eventId]) return;
+
+    try {
+      setLoadingAcademicEventId(eventId);
+      const data = await backendGraphQLFetchJson<{ academicEvent: GraphqlAcademicEvent | null }>(
+        GET_ACADEMIC_EVENT_DETAIL,
+        { id: eventId },
+      );
+      const academicEvent = data.academicEvent;
+      if (!academicEvent) return;
+      setAcademicEventDetailsById((prev) => ({
+        ...prev,
+        [eventId]: academicEvent,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erreur inconnue";
+      showToast(`Impossible de charger le détail de l'événement: ${message}`);
+    } finally {
+      setLoadingAcademicEventId(null);
+    }
+  }, [academicEventDetailsById]);
 
   function showToast(msg: string) {
     setToastMessage(msg);
@@ -262,6 +364,9 @@ export default function StudentDashboard() {
         if (data.type === 'publication.created' || data.type === 'grades.published') {
           loadFeed();
         }
+        if (data.type?.startsWith('room.')) {
+          setRoomsReloadToken((prev) => prev + 1);
+        }
 
         setRealtimeNotifications((prev) => {
           if (prev.some((p) => p.id === data.id)) return prev;
@@ -286,7 +391,7 @@ export default function StudentDashboard() {
       source.removeEventListener('grades.published', handleSseEvent);
       source.close();
     };
-  }, [user.year]);
+  }, [user.year, loadFeed]);
 
   const handleDownload = async (fileUrl: string, fileName: string) => {
     try {
@@ -307,10 +412,11 @@ export default function StudentDashboard() {
 
   // Filter posts based on student's university year.
   // Note: general posts have no targetYear. Grades posts specify targetYear and are filtered.
-  const normalizedUserYear = (user.year || "GL3").trim().toUpperCase();
+  const normalizedUserYear = normalizeTargetYear(user.year) ?? "GL3";
   const filteredFeedPosts = allFeedPosts.filter((post) => {
-    if (!post.targetYear) return true;
-    return post.targetYear.trim().toUpperCase() === normalizedUserYear;
+    const targetYear = normalizeTargetYear(post.targetYear);
+    if (!targetYear) return true;
+    return targetYear === normalizedUserYear;
   });
 
   // Dynamic storage of custom room comments and homework submission state
@@ -331,11 +437,17 @@ export default function StudentDashboard() {
   useEffect(() => {
     const loadRooms = async () => {
       try {
-        const data = await backendFetchJson<any[]>("/teacher/rooms");
-        setRoomsState(data.map((r) => ({
+        const data = await backendGraphQLFetchJson<{ rooms: any[] }>(GET_ROOMS);
+        setRoomsState((data.rooms ?? []).map((r) => {
+          const teacherLabel =
+            (typeof r.teacherName === "string" && r.teacherName.trim()) ||
+            (typeof r.teacherId === "string" && r.teacherId.trim()) ||
+            "Enseignant";
+
+          return {
           id: r.id,
           name: r.name,
-          prof: r.teacherId || "Enseignant",
+          prof: teacherLabel,
           profTitle: "Enseignant",
           bgGradient: getRoomGradient(r.id),
           targetYear: r.targetYear,
@@ -352,10 +464,14 @@ export default function StudentDashboard() {
           } : undefined,
           posts: (r.posts ?? []).map((p: any) => ({
             id: p.id,
-            author: r.teacherId || "Enseignant",
-            avatar: (r.teacherId?.[0] ?? "P").toUpperCase(),
+            author: p.author || teacherLabel,
+            avatar: (p.author?.[0] ?? teacherLabel?.[0] ?? "P").toUpperCase(),
             date: "Récemment",
             content: p.content,
+            type: p.type ?? "announcement",
+            fileName: p.fileName ?? undefined,
+            filePath: p.filePath ?? null,
+            fileSizeBytes: p.fileSizeBytes ?? null,
             comments: (p.comments ?? []).map((c: any) => ({
               id: c.id,
               author: c.authorName,
@@ -363,13 +479,21 @@ export default function StudentDashboard() {
               date: new Date(c.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }),
             })),
           })),
-        })));
+        };
+        }));
       } catch {
         console.error("Impossible de charger les salles.");
       }
     };
+
     void loadRooms();
-  }, []);
+
+    if (activeTab !== "rooms") return;
+    const timer = setInterval(() => {
+      void loadRooms();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [activeTab, user.name, user.year, roomsReloadToken]);
 
   // Active rooms based on student's year selection (case-insensitive)
   const normalizedStudentYear = (user.year || "GL3").trim().toUpperCase();
@@ -386,15 +510,21 @@ export default function StudentDashboard() {
     if (!commentText?.trim()) return;
 
     try {
-      const created = await backendFetchJson<any>(`/teacher/posts/${postId}/comments`, {
-        method: "POST",
-        body: JSON.stringify({ content: commentText.trim(), authorName: user.name || "Étudiant" }),
-      });
+      const created = await backendGraphQLFetchJson<{ createRoomComment: any }>(
+        CREATE_ROOM_COMMENT,
+        {
+          postId,
+          input: {
+            content: commentText.trim(),
+            authorName: user.name || "Étudiant",
+          },
+        },
+      );
 
       const newComment = {
-        id: created.id,
-        author: created.authorName,
-        content: created.content,
+        id: created.createRoomComment.id,
+        author: created.createRoomComment.authorName,
+        content: created.createRoomComment.content,
         date: "À l'instant",
       };
 
@@ -418,11 +548,19 @@ export default function StudentDashboard() {
   const handleHomeworkSubmit = async (roomId: string) => {
     const room = roomsState.find(r => r.id === roomId);
     if (!room?.homework) return;
+    if (!homeworkFile) {
+      showToast("Sélectionnez un fichier avant de soumettre.");
+      return;
+    }
 
     try {
+      const formData = new FormData();
+      formData.append("studentName", user.name || "Étudiant");
+      formData.append("file", homeworkFile);
+
       await backendFetchJson(`/teacher/homeworks/${room.homework.id}/submit`, {
         method: "POST",
-        body: JSON.stringify({ studentName: user.name || "Étudiant" }),
+        body: formData,
       });
 
       setHomeworkStatus(prev => ({ ...prev, [roomId]: true }));
@@ -697,17 +835,24 @@ export default function StudentDashboard() {
                   </div>
                 </div>
 
-                {/* Feed Posts Stream */}
-                <div className="flex flex-col gap-6">
-                      {filteredFeedPosts.map((post) => (
-                        <article 
-                          key={post.id} 
-                          className={`rounded-3xl border p-6 bg-white transition-all shadow-sm ${
-                            post.category === "urgent" 
-                              ? "border-red-100 bg-red-50/20 shadow-red-50/50" 
-                              : "border-slate-100"
-                          }`}
-                        >
+	                {/* Feed Posts Stream */}
+	                <div className="flex flex-col gap-6">
+	                      {filteredFeedPosts.map((post) => {
+                          const detail = publicationDetailsById[post.id];
+                          const resolvedContent = detail?.contenu ?? post.content;
+                          const resolvedFileUrl =
+                            toAbsoluteFileUrl(detail?.fichierUrl) ?? post.fileUrl;
+                          const resolvedGrades = detail?.grades ?? post.grades;
+
+                          return (
+	                        <article 
+	                          key={post.id} 
+	                          className={`rounded-3xl border p-6 bg-white transition-all shadow-sm ${
+	                            post.category === "urgent" 
+	                              ? "border-red-100 bg-red-50/20 shadow-red-50/50" 
+	                              : "border-slate-100"
+	                          }`}
+	                        >
                           {/* Post Header */}
                           <div className="flex items-center justify-between gap-4 mb-4">
                             <div className="flex items-center gap-2">
@@ -736,13 +881,28 @@ export default function StudentDashboard() {
                             <div className="text-[10px] font-extrabold text-slate-500">Par : {post.author}</div>
                           </div>
 
-                          {/* Post Body Title */}
-                          <h3 className="text-base font-extrabold text-slate-900 mb-2">{post.title}</h3>
-                          <p className="text-xs text-slate-500 leading-relaxed mb-4">{post.content}</p>
+	                          {/* Post Body Title */}
+	                          <h3 className="text-base font-extrabold text-slate-900 mb-2">{post.title}</h3>
+                            {detail ? (
+	                            <p className="text-xs text-slate-500 leading-relaxed mb-4">{resolvedContent}</p>
+                            ) : (
+                              <div className="mb-4 rounded-2xl border border-slate-100 bg-slate-50 p-3.5 flex items-center justify-between gap-3">
+                                <span className="text-[11px] text-slate-500 font-semibold">
+                                  Détails non chargés.
+                                </span>
+                                <button
+                                  onClick={() => { void loadPublicationDetail(post.id); }}
+                                  disabled={loadingPublicationId === post.id}
+                                  className="px-3 py-1.5 rounded-xl bg-blue-600 text-white text-[10px] font-bold disabled:bg-blue-300"
+                                >
+                                  {loadingPublicationId === post.id ? "Chargement..." : "Voir détails"}
+                                </button>
+                              </div>
+                            )}
 
-                          {/* File Attachment — shown for any post with a file */}
-                          {post.fileName && (
-                            <div className="flex items-center justify-between gap-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl hover:bg-slate-100/50 transition-colors">
+	                          {/* File Attachment — shown for any post with a file */}
+	                          {post.fileName && (
+	                            <div className="flex items-center justify-between gap-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl hover:bg-slate-100/50 transition-colors">
                               <div className="flex items-center gap-2.5">
                                 <div className="p-2 rounded-xl bg-white border border-slate-100 text-red-500">
                                   <FileText className="h-5 w-5" />
@@ -752,35 +912,35 @@ export default function StudentDashboard() {
                                   <div className="text-[9px] text-slate-400 font-semibold">{post.fileSize ?? ""} • Fichier téléchargeable</div>
                                 </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                {post.fileUrl && (
-                                  <button
-                                    onClick={() => window.open(post.fileUrl, "_blank")}
-                                    className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:text-blue-600 rounded-xl text-[10px] font-bold transition-all cursor-pointer shadow-sm hover:border-slate-300"
-                                  >
-                                    Consulter
-                                  </button>
-                                )}
-                                {post.fileUrl && (
-                                  <button
-                                    onClick={() => handleDownload(post.fileUrl!, post.fileName!)}
-                                    className="p-2 rounded-xl hover:bg-white hover:text-blue-600 text-slate-400 transition-colors cursor-pointer border border-transparent hover:border-slate-100"
-                                  >
-                                    <Download className="h-4 w-4" />
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          )}
+	                              <div className="flex items-center gap-2">
+	                                {resolvedFileUrl && (
+	                                  <button
+	                                    onClick={() => window.open(resolvedFileUrl, "_blank")}
+	                                    className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:text-blue-600 rounded-xl text-[10px] font-bold transition-all cursor-pointer shadow-sm hover:border-slate-300"
+	                                  >
+	                                    Consulter
+	                                  </button>
+	                                )}
+	                                {resolvedFileUrl && (
+	                                  <button
+	                                    onClick={() => handleDownload(resolvedFileUrl, post.fileName!)}
+	                                    className="p-2 rounded-xl hover:bg-white hover:text-blue-600 text-slate-400 transition-colors cursor-pointer border border-transparent hover:border-slate-100"
+	                                  >
+	                                    <Download className="h-4 w-4" />
+	                                  </button>
+	                                )}
+	                              </div>
+	                            </div>
+	                          )}
 
-                          {/* Targeted Grade Lists */}
-                          {post.category === "notes" && post.grades && post.grades.length > 0 && (
-                            <div className="mt-4 border border-teal-50 rounded-2xl overflow-hidden shadow-inner bg-teal-50/10">
-                              <div className="bg-teal-500/10 px-4 py-2.5 border-b border-teal-100 flex items-center justify-between text-teal-800">
-                                <span className="text-[10px] font-extrabold">Relevé de notes - Promotion {user.year}</span>
-                                <span className="text-[9px] font-bold bg-teal-100 px-2 py-0.5 rounded-full">Provisoire</span>
-                              </div>
-                              <div className="overflow-x-auto">
+	                          {/* Targeted Grade Lists */}
+	                          {post.category === "notes" && resolvedGrades && resolvedGrades.length > 0 && (
+	                            <div className="mt-4 border border-teal-50 rounded-2xl overflow-hidden shadow-inner bg-teal-50/10">
+	                              <div className="bg-teal-500/10 px-4 py-2.5 border-b border-teal-100 flex items-center justify-between text-teal-800">
+	                                <span className="text-[10px] font-extrabold">Relevé de notes - Promotion {user.year}</span>
+	                                <span className="text-[9px] font-bold bg-teal-100 px-2 py-0.5 rounded-full">Provisoire</span>
+	                              </div>
+	                              <div className="overflow-x-auto">
                                 <table className="w-full text-[11px] font-semibold text-slate-700 text-left border-collapse">
                                   <thead>
                                     <tr className="border-b border-slate-100 text-slate-400 text-[10px] uppercase font-extrabold bg-slate-50/50">
@@ -792,8 +952,8 @@ export default function StudentDashboard() {
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {post.grades.map((grade, idx) => (
-                                      <tr key={idx} className="border-b border-slate-100 hover:bg-teal-50/20">
+	                                    {resolvedGrades.map((grade, idx) => (
+	                                      <tr key={idx} className="border-b border-slate-100 hover:bg-teal-50/20">
                                         <td className="p-3 font-bold text-slate-800">{grade.subject}</td>
                                         <td className="p-3 text-slate-500">{grade.studentId}</td>
                                         <td className="p-3 text-slate-700">{grade.studentName}</td>
@@ -809,13 +969,13 @@ export default function StudentDashboard() {
                                 </table>
                               </div>
                             </div>
-                          )}
+	                          )}
 
-                        </article>
-                      ))}
-                    </div>
-              </div>
-            )}
+	                        </article>
+	                      )})}
+	                    </div>
+	              </div>
+	            )}
 
             {/* TAB 2: CHAT HUB (Messagerie Administration) */}
             {activeTab === "chat" && (
@@ -980,6 +1140,31 @@ export default function StudentDashboard() {
                             </div>
 
                             <p className="text-xs text-slate-600 leading-relaxed font-semibold whitespace-pre-line">{post.content}</p>
+                            {post.type === "document" && post.fileName && (
+                              <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                                <div className="flex items-center gap-3">
+                                  <div className="p-2.5 rounded-xl bg-white border border-slate-200 text-red-500 shadow-sm">
+                                    <FileText className="h-5 w-5" />
+                                  </div>
+                                  <div>
+                                    <div className="text-xs font-bold text-slate-800">{post.fileName}</div>
+                                    <div className="text-[10px] text-slate-400 font-semibold">
+                                      {formatFileSize(post.fileSizeBytes)}
+                                    </div>
+                                  </div>
+                                </div>
+                                {post.filePath ? (
+                                  <a
+                                    href={buildBackendUrl(post.filePath)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-[11px] font-bold text-blue-600 hover:underline whitespace-nowrap"
+                                  >
+                                    Voir/Télécharger
+                                  </a>
+                                ) : null}
+                              </div>
+                            )}
                             
                             {/* Comments Section */}
                             <div className="pt-4 border-t border-slate-50 space-y-4">
@@ -1123,23 +1308,52 @@ export default function StudentDashboard() {
                   events={backendCalendarEvents}
                 />
 
-                {/* Upcoming Events List */}
-                <div className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden p-6">
-                  <h4 className="text-xs font-extrabold text-slate-800 mb-4">Événements à venir</h4>
-                  <div className="space-y-3">
-                    {backendCalendarEvents.length === 0 ? (
-                      <p className="text-xs text-slate-400 text-center py-2">Aucun événement à venir.</p>
-                    ) : backendCalendarEvents.slice(0, 3).map((evt, idx) => (
-                       <div key={idx} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-2 h-2 rounded-full ${evt.type === 'exam' ? 'bg-red-500' : 'bg-blue-500'}`}></div>
-                            <span className="text-xs font-bold text-slate-700">{evt.title}</span>
-                          </div>
-                          <span className="text-[10px] text-slate-500 font-semibold">{evt.date ?? ""}</span>
-                       </div>
-                    ))}
-                  </div>
-                </div>
+	                {/* Upcoming Events List */}
+	                <div className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden p-6">
+	                  <h4 className="text-xs font-extrabold text-slate-800 mb-4">Événements à venir</h4>
+	                  <div className="space-y-3">
+	                    {academicEventsSummary.length === 0 ? (
+	                      <p className="text-xs text-slate-400 text-center py-2">Aucun événement à venir.</p>
+	                    ) : academicEventsSummary.slice(0, 6).map((evt) => (
+	                       <button
+                          key={evt.id}
+                          onClick={() => { void loadAcademicEventDetail(evt.id); }}
+                          className="w-full text-left flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:bg-slate-100/70 transition-colors"
+                        >
+	                          <div className="flex items-center gap-3">
+	                            <div className={`w-2 h-2 rounded-full ${evt.type === 'DS' || evt.type === 'EXAMEN' ? 'bg-red-500' : 'bg-blue-500'}`}></div>
+	                            <span className="text-xs font-bold text-slate-700">{evt.nom}</span>
+	                          </div>
+	                          <span className="text-[10px] text-slate-500 font-semibold">{evt.dateDebut ?? ""}</span>
+	                       </button>
+	                    ))}
+	                  </div>
+	                </div>
+
+                  {selectedAcademicEventId && (
+                    <div className="bg-white border border-slate-100 rounded-3xl shadow-sm p-5">
+                      {loadingAcademicEventId === selectedAcademicEventId ? (
+                        <p className="text-xs text-slate-500 font-semibold">Chargement du détail...</p>
+                      ) : academicEventDetailsById[selectedAcademicEventId] ? (
+                        <div className="space-y-2">
+                          <h4 className="text-sm font-extrabold text-slate-800">
+                            {academicEventDetailsById[selectedAcademicEventId].nom}
+                          </h4>
+                          <p className="text-xs text-slate-500">
+                            Début: {academicEventDetailsById[selectedAcademicEventId].dateDebut || "—"}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            Fin: {academicEventDetailsById[selectedAcademicEventId].dateFin || "—"}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            Type: {academicEventDetailsById[selectedAcademicEventId].type}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-500 font-semibold">Aucun détail disponible.</p>
+                      )}
+                    </div>
+                  )}
 
                 <div className="p-4 rounded-2xl bg-amber-50 border border-amber-100 text-amber-800 text-[10px] font-semibold flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />

@@ -20,6 +20,82 @@ export class TeacherService {
     private notificationsService: NotificationsService,
   ) {}
 
+  private async attachTeacherNames<T extends { teacherId: string }>(
+    rooms: T[],
+  ): Promise<Array<T & { teacherName: string }>> {
+    const numericTeacherIds = Array.from(
+      new Set(
+        rooms
+          .map((room) => room.teacherId?.trim())
+          .filter((value): value is string => !!value && /^\d+$/.test(value))
+          .map((value) => Number(value)),
+      ),
+    );
+
+    const teachers = numericTeacherIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: numericTeacherIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+
+    const teacherNameById = new Map(teachers.map((teacher) => [String(teacher.id), teacher.name]));
+
+    return rooms.map((room) => {
+      const fallback = room.teacherId?.trim() || 'Enseignant';
+      const teacherName = teacherNameById.get(room.teacherId) ?? fallback;
+      return { ...room, teacherName };
+    });
+  }
+
+  async getRoomMembers(roomId: string) {
+    const room = await this.prisma.room.findUnique({ where: { id: roomId } });
+    if (!room) throw new NotFoundException(`Salle ${roomId} introuvable`);
+
+    const targetYear = room.targetYear.trim().toUpperCase();
+    const members = await this.prisma.user.findMany({
+      where: {
+        year: { equals: targetYear },
+        role: { in: ['student', 'etudiant'] },
+      },
+      select: { id: true, name: true, year: true },
+      orderBy: { name: 'asc' },
+    });
+
+    return members.map((member) => ({
+      id: String(member.id),
+      name: member.name,
+      year: member.year ?? targetYear,
+    }));
+  }
+
+  async getRoomMemberById(roomId: string, userId: string) {
+    const room = await this.prisma.room.findUnique({ where: { id: roomId } });
+    if (!room) throw new NotFoundException(`Salle ${roomId} introuvable`);
+
+    const id = Number(userId);
+    if (!Number.isFinite(id)) return null;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, name: true, email: true, role: true, year: true },
+    });
+    if (!user) return null;
+
+    const targetYear = room.targetYear.trim().toUpperCase();
+    const userYear = user.year?.trim().toUpperCase();
+    if (user.role !== 'student' && user.role !== 'etudiant') return null;
+    if (userYear !== targetYear) return null;
+
+    return {
+      id: String(user.id),
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      year: user.year ?? targetYear,
+    };
+  }
+
   // ROOMS
   createRoom(dto: CreateRoomDto) {
     return this.prisma.room.create({
@@ -27,23 +103,27 @@ export class TeacherService {
     });
   }
 
-  getRooms() {
-    return this.prisma.room.findMany({
+  async getRooms() {
+    const rooms = await this.prisma.room.findMany({
       include: {
         posts: { include: { comments: true } },
         homeworks: { include: { submissions: true } },
       },
     });
+    return this.attachTeacherNames(rooms);
   }
 
-  getRoomById(id: string) {
-    return this.prisma.room.findUnique({
+  async getRoomById(id: string) {
+    const room = await this.prisma.room.findUnique({
       where: { id },
       include: {
         posts: { include: { comments: true } },
         homeworks: { include: { submissions: true } },
       },
     });
+    if (!room) return room;
+    const [roomWithTeacherName] = await this.attachTeacherNames([room]);
+    return roomWithTeacherName;
   }
 
   updateRoom(id: string, dto: UpdateRoomDto) {
@@ -54,11 +134,12 @@ export class TeacherService {
     return this.prisma.room.delete({ where: { id } });
   }
 
-  getRoomsByYear(year: string) {
-    return this.prisma.room.findMany({
+  async getRoomsByYear(year: string) {
+    const rooms = await this.prisma.room.findMany({
       where: { targetYear: year.trim().toUpperCase() },
       include: { posts: true, homeworks: true },
     });
+    return this.attachTeacherNames(rooms);
   }
 
   getHomeworksByYear(year: string) {
@@ -70,13 +151,41 @@ export class TeacherService {
   }
 
   // POSTS
-  async createPost(roomId: string, dto: CreatePostDto) {
+  async createPost(
+    roomId: string,
+    dto: CreatePostDto,
+    file?: Express.Multer.File,
+  ) {
+    const normalizedType = dto.type ?? (file ? 'document' : 'announcement');
     const room = await this.prisma.room.findUnique({ where: { id: roomId } });
     const post = await this.prisma.post.create({
-      data: { content: dto.content, type: dto.type ?? 'announcement', author: dto.author ?? '', roomId },
+      data: {
+        content: dto.content,
+        type: normalizedType,
+        author: dto.author ?? '',
+        roomId,
+        fileName: file?.originalname ?? null,
+        filePath: file ? `/uploads/room-posts/${file.filename}` : null,
+        fileSizeBytes: file?.size ?? null,
+      },
       include: { comments: true },
     });
-    if (room && dto.type && dto.type !== 'announcement') {
+    if (room) {
+      this.notificationsService.publish({
+        type: 'room.new.post',
+        message: `Nouveau message de ${dto.author || 'l’enseignant'} dans "${room.name}"`,
+        role: NotificationRole.STUDENT,
+        targetYear: room.targetYear,
+        data: {
+          roomId,
+          roomName: room.name,
+          postId: post.id,
+          author: dto.author ?? '',
+          content: dto.content.slice(0, 120),
+        },
+      }).catch(err => this.logger.error('publish student room notification failed', err));
+    }
+    if (room && normalizedType !== 'announcement') {
       this.notificationsService.publish({
         type: 'room.new.post',
         message: `Nouvelle publication de ${dto.author || 'un étudiant'} dans "${room.name}"`,
@@ -157,15 +266,35 @@ export class TeacherService {
     });
   }
 
-  async submitHomework(homeworkId: string, dto: SubmitHomeworkDto) {
+  async submitHomework(
+    homeworkId: string,
+    dto: SubmitHomeworkDto,
+    file?: Express.Multer.File,
+  ) {
     const hw = await this.prisma.homework.findUnique({ where: { id: homeworkId } });
     if (!hw) throw new NotFoundException(`Devoir ${homeworkId} introuvable`);
     const existing = await this.prisma.homeworkSubmission.findFirst({
       where: { homeworkId, studentName: dto.studentName },
     });
-    if (existing) return existing;
+    if (existing) {
+      if (!file) return existing;
+      return this.prisma.homeworkSubmission.update({
+        where: { id: existing.id },
+        data: {
+          fileName: file.originalname,
+          filePath: `/uploads/homeworks/${file.filename}`,
+          fileSizeBytes: file.size,
+        },
+      });
+    }
     return this.prisma.homeworkSubmission.create({
-      data: { studentName: dto.studentName, homeworkId },
+      data: {
+        studentName: dto.studentName,
+        homeworkId,
+        fileName: file?.originalname ?? null,
+        filePath: file ? `/uploads/homeworks/${file.filename}` : null,
+        fileSizeBytes: file?.size ?? null,
+      },
     });
   }
 

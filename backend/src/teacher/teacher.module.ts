@@ -8,6 +8,11 @@ import { NotificationsModule } from '../admin-agent/notifications/notifications.
 @Module({
   imports: [NotificationsModule],
   controllers: [TeacherController],
-  providers: [TeacherService, HomeworkReminderService, PrismaService],
+  providers: [
+    TeacherService,
+    HomeworkReminderService,
+    PrismaService,
+  ],
+  exports: [TeacherService],
 })
 export class TeacherModule {}

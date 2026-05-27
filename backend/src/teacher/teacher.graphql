@@ -1,0 +1,97 @@
+type RoomCommentType {
+  id: ID!
+  authorName: String!
+  content: String!
+  createdAt: String!
+}
+
+type PostType {
+  id: ID!
+  content: String!
+  type: String!
+  author: String!
+  fileName: String
+  filePath: String
+  fileSizeBytes: Int
+  comments: [RoomCommentType!]!
+}
+
+type HomeworkSubmissionType {
+  id: ID!
+  studentName: String!
+  submittedAt: String!
+  fileName: String
+  filePath: String
+  fileSizeBytes: Int
+}
+
+type HomeworkType {
+  id: ID!
+  title: String!
+  description: String!
+  deadline: String!
+  submissions: [HomeworkSubmissionType!]!
+}
+
+type RoomType {
+  id: ID!
+  name: String!
+  targetYear: String!
+  teacherId: String!
+  teacherName: String
+  posts: [PostType!]!
+  homeworks: [HomeworkType!]!
+}
+
+type RoomMemberSummaryType {
+  id: ID!
+  name: String!
+  year: String!
+}
+
+type RoomMemberDetailType {
+  id: ID!
+  name: String!
+  email: String!
+  role: String!
+  year: String!
+}
+
+input CreateRoomInput {
+  name: String!
+  targetYear: String!
+  teacherId: String!
+}
+
+input CreateRoomPostInput {
+  content: String!
+  type: String
+  author: String
+}
+
+input CreateRoomHomeworkInput {
+  title: String!
+  description: String!
+  deadline: String!
+}
+
+input CreateRoomCommentInput {
+  content: String!
+  authorName: String!
+}
+
+extend type Query {
+  rooms: [RoomType!]!
+  room(id: ID!): RoomType
+  roomMembers(roomId: ID!): [RoomMemberSummaryType!]!
+  roomMember(roomId: ID!, userId: ID!): RoomMemberDetailType
+  homeworksByYear(year: String!): [HomeworkType!]!
+  homeworkSubmissions(homeworkId: ID!): [HomeworkSubmissionType!]!
+}
+
+type Mutation {
+  createRoom(input: CreateRoomInput!): RoomType!
+  createRoomPost(roomId: ID!, input: CreateRoomPostInput!): PostType!
+  createRoomHomework(roomId: ID!, input: CreateRoomHomeworkInput!): HomeworkType!
+  createRoomComment(postId: ID!, input: CreateRoomCommentInput!): RoomCommentType!
+}

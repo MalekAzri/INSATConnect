@@ -40,7 +40,7 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
 
-      localStorage.setItem("insat_token", res.access_token);
+      sessionStorage.setItem("insat_token", res.access_token);
       const roleMap: Record<string, UserRole> = {
         etudiant: "student",
         student: "student",

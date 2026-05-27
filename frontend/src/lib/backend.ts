@@ -15,7 +15,19 @@ export async function backendFetch(path: string, init?: RequestInit) {
     headers.set("Content-Type", "application/json");
   }
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("insat_token") : null;
+  let token: string | null = null;
+  if (typeof window !== "undefined") {
+    token = sessionStorage.getItem("insat_token");
+    if (!token) {
+      // Migrate legacy token from localStorage if present.
+      const legacy = localStorage.getItem("insat_token");
+      if (legacy) {
+        sessionStorage.setItem("insat_token", legacy);
+        localStorage.removeItem("insat_token");
+        token = legacy;
+      }
+    }
+  }
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
   }

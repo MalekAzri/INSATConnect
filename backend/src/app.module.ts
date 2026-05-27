@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
@@ -11,30 +11,36 @@ import { AppService } from './app.service';
 import { MessagesModule } from './messages/messages.module';
 import { ChatModule } from './chat/chat.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { PrismaService } from './prisma/prisma.service';
 
 import { AdminAgentModule } from './admin-agent/admin-agent.module';
 import { StudentAgentModule } from './student-agent/student-agent.module';
-import { StudentGraphqlModule } from './student-graphql/student-graphql.module';
 import { TeacherModule } from './teacher/teacher.module';
+import { TeacherService } from './teacher/teacher.service';
 import { AuthModule } from './auth/auth.module';
-
-import { Publication } from './admin-agent/publications/entities/publication.entity';
-import { AcademicCalendarConfig } from './admin-agent/calendar/entities/academic-calendar.entity';
-import { GradeSubmission } from './admin-agent/grades/entities/grade-submission.entity';
+import { createApolloResolvers } from './graphql-resolvers/general-resolvers';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
 
-    GraphQLModule.forRoot<ApolloDriverConfig>({
+    GraphQLModule.forRootAsync<ApolloDriverConfig>({
       driver: ApolloDriver,
-      typePaths: ['./**/*.graphql'],
-      definitions: {
-        path: join(process.cwd(), 'src/graphql.ts'),
-        outputAs: 'class',
-      },
-      context: ({ req }: { req: unknown }) => ({ req }),
+      imports: [PrismaModule, TeacherModule],
+      inject: [PrismaService, TeacherService],
+      useFactory: (
+        prismaService: PrismaService,
+        teacherService: TeacherService,
+      ) => ({
+        typePaths: ['./**/*.graphql'],
+        definitions: {
+          path: join(process.cwd(), 'src/graphql.ts'),
+          outputAs: 'class',
+        },
+        context: ({ req }: { req: unknown }) => ({ req }),
+        resolvers: createApolloResolvers(prismaService, teacherService),
+      }),
     }),
 
     MessagesModule,
@@ -43,7 +49,6 @@ import { GradeSubmission } from './admin-agent/grades/entities/grade-submission.
 
     AdminAgentModule,
     StudentAgentModule,
-    StudentGraphqlModule,
     TeacherModule,
     AuthModule,
   ],

@@ -5,7 +5,22 @@ import { useUser } from "@/context/UserContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CalendarGrid, { CalendarEvent } from "@/components/Calendar";
-import { backendFetchJson, buildBackendUrl } from "@/lib/backend";
+import {
+  backendFetchJson,
+  backendGraphQLFetchJson,
+  buildBackendUrl,
+} from "@/lib/backend";
+import {
+  GET_ACADEMIC_CALENDAR,
+  GET_ACADEMIC_EVENT_DETAIL,
+  CREATE_ROOM,
+  CREATE_ROOM_HOMEWORK,
+  CREATE_ROOM_POST,
+  GET_HOMEWORK_SUBMISSIONS,
+  GET_ROOM_MEMBER_DETAIL,
+  GET_ROOM_MEMBERS,
+  GET_ROOMS,
+} from "@/graphql/queries";
 import {
   Download,
   FileText,
@@ -38,6 +53,8 @@ interface RoomPost {
   type: "announcement" | "document";
   fileName?: string;
   fileSize?: string;
+  filePath?: string | null;
+  fileSizeBytes?: number | null;
   isMe?: boolean;
   comments: RoomComment[];
 }
@@ -50,6 +67,15 @@ interface Homework {
   submissionsCount: number;
 }
 
+interface HomeworkSubmission {
+  id: string;
+  studentName: string;
+  submittedAt: string;
+  fileName?: string | null;
+  filePath?: string | null;
+  fileSizeBytes?: number | null;
+}
+
 interface Room {
   id: string;
   name: string;
@@ -58,6 +84,28 @@ interface Room {
   targetYear: string;
   posts: RoomPost[];
   homeworks: Homework[];
+}
+
+interface GraphqlAcademicEvent {
+  id: string;
+  nom: string;
+  dateDebut?: string | null;
+  dateFin?: string | null;
+  type: "DS" | "EXAMEN" | "AFFICHAGE" | "DELIBERATION" | "FIN_ANNEE";
+}
+
+interface RoomMemberSummary {
+  id: string;
+  name: string;
+  year: string;
+}
+
+interface RoomMemberDetail {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  year: string;
 }
 
 type GradeSubmissionStatus = "pending" | "validated" | "published";
@@ -89,37 +137,6 @@ interface BackendGradeSubmission {
   publishedAt?: string | null;
   publicationId?: string | null;
   createdAt: string;
-}
-
-interface BackendCalendarConfig {
-  dsRemise: string;
-  examRemise: string;
-  dsAffichage: string;
-  examAffichage: string;
-  sem1Deliberation: string;
-  sem2Deliberation: string;
-  deliberationFinale: string;
-  s1_ds?: string | null;
-  s1_exam?: string | null;
-  s1_grades_ds?: string | null;
-  s1_publish_ds?: string | null;
-  s1_grades_exam?: string | null;
-  s1_publish_exam?: string | null;
-  s1_delib?: string | null;
-  s2_ds?: string | null;
-  s2_exam?: string | null;
-  s2_grades_ds?: string | null;
-  s2_publish_ds?: string | null;
-  s2_grades_exam?: string | null;
-  s2_publish_exam?: string | null;
-  s2_delib?: string | null;
-  end_year?: string | null;
-}
-
-interface TeacherCalendarRow {
-  event: string;
-  date: string;
-  badge: string;
 }
 
 interface TeacherGradeRow {
@@ -273,6 +290,11 @@ const formatDateTime = (isoDate?: string | null) => {
   });
 };
 
+const formatFileSize = (bytes?: number | null) => {
+  if (!bytes || bytes <= 0) return "";
+  return `${(bytes / (1024 * 1024)).toFixed(2)} Mo`;
+};
+
 const formatDate = (value: string) => {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
@@ -284,7 +306,7 @@ const formatDate = (value: string) => {
 };
 
 const toCalendarEvent = (
-  dateStr: string,
+  dateStr: string | null | undefined,
   type: CalendarEvent["type"],
   title: string,
 ): CalendarEvent | null => {
@@ -315,9 +337,10 @@ export default function TeacherDashboard() {
   const [isLoadingSubmissions, setIsLoadingSubmissions] = useState(false);
   const [isSubmittingGrades, setIsSubmittingGrades] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
-  const [calendarRows, setCalendarRows] = useState<TeacherCalendarRow[]>([
-    { event: "Calendrier académique en attente", date: "Aucune date configurée", badge: "Info" },
-  ]);
+  const [academicEventsSummary, setAcademicEventsSummary] = useState<GraphqlAcademicEvent[]>([]);
+  const [academicEventDetailsById, setAcademicEventDetailsById] = useState<Record<string, GraphqlAcademicEvent>>({});
+  const [selectedAcademicEventId, setSelectedAcademicEventId] = useState<string | null>(null);
+  const [loadingAcademicEventId, setLoadingAcademicEventId] = useState<string | null>(null);
   const gradeCsvInputRef = useRef<HTMLInputElement>(null);
 
   // Redirect to login if user directly lands on dashboard without being authenticated
@@ -333,8 +356,23 @@ export default function TeacherDashboard() {
   };
 
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [expandedHomeworkId, setExpandedHomeworkId] = useState<string | null>(null);
+  const [homeworkSubmissionsById, setHomeworkSubmissionsById] = useState<Record<string, HomeworkSubmission[]>>({});
+  const [loadingHomeworkSubmissionsId, setLoadingHomeworkSubmissionsId] = useState<string | null>(null);
+  const [roomMembersByRoomId, setRoomMembersByRoomId] = useState<Record<string, RoomMemberSummary[]>>({});
+  const [loadingRoomMembersRoomId, setLoadingRoomMembersRoomId] = useState<string | null>(null);
+  const [selectedRoomMemberId, setSelectedRoomMemberId] = useState<string | null>(null);
+  const [roomMemberDetailsByKey, setRoomMemberDetailsByKey] = useState<Record<string, RoomMemberDetail>>({});
+  const [loadingRoomMemberKey, setLoadingRoomMemberKey] = useState<string | null>(null);
 
   const selectedRoom = rooms.find(r => r.id === selectedRoomId);
+  const selectedRoomMemberDetailKey =
+    selectedRoomId && selectedRoomMemberId
+      ? `${selectedRoomId}:${selectedRoomMemberId}`
+      : null;
+  const selectedRoomMemberDetail = selectedRoomMemberDetailKey
+    ? roomMemberDetailsByKey[selectedRoomMemberDetailKey]
+    : null;
 
   const roomGradients = [
     "from-blue-500 to-indigo-600",
@@ -350,8 +388,8 @@ export default function TeacherDashboard() {
 
   const loadRooms = React.useCallback(async () => {
     try {
-      const data = await backendFetchJson<any[]>("/teacher/rooms");
-      const teacherRooms = data.filter((r: any) =>
+      const data = await backendGraphQLFetchJson<{ rooms: any[] }>(GET_ROOMS);
+      const teacherRooms = (data.rooms ?? []).filter((r: any) =>
         r.teacherId === String(user.id) || r.teacherId === user.name
       );
       setRooms(teacherRooms.map((r: any) => ({
@@ -367,6 +405,9 @@ export default function TeacherDashboard() {
           date: "Récemment",
           content: p.content,
           type: p.type ?? "announcement",
+          fileName: p.fileName ?? undefined,
+          filePath: p.filePath ?? null,
+          fileSizeBytes: p.fileSizeBytes ?? null,
           isMe: p.author === user.name || p.author === String(user.id),
           comments: (p.comments ?? []).map((c: any) => ({
             id: c.id,
@@ -420,69 +461,104 @@ export default function TeacherDashboard() {
   }, [selectedRoom?.targetYear]);
 
   useEffect(() => {
+    setExpandedHomeworkId(null);
+    setSelectedRoomMemberId(null);
+  }, [selectedRoomId]);
+
+  useEffect(() => {
+    if (!selectedRoomId) return;
+    if (roomMembersByRoomId[selectedRoomId]) return;
+
+    const loadRoomMembers = async () => {
+      try {
+        setLoadingRoomMembersRoomId(selectedRoomId);
+        const data = await backendGraphQLFetchJson<{ roomMembers: RoomMemberSummary[] }>(
+          GET_ROOM_MEMBERS,
+          { roomId: selectedRoomId },
+        );
+        setRoomMembersByRoomId((prev) => ({
+          ...prev,
+          [selectedRoomId]: data.roomMembers ?? [],
+        }));
+      } catch {
+        showToast("Impossible de charger les membres de la room.");
+      } finally {
+        setLoadingRoomMembersRoomId(null);
+      }
+    };
+
+    void loadRoomMembers();
+  }, [selectedRoomId, roomMembersByRoomId]);
+
+  const handleLoadRoomMemberDetail = async (roomId: string, memberId: string) => {
+    setSelectedRoomMemberId(memberId);
+    const detailKey = `${roomId}:${memberId}`;
+    if (roomMemberDetailsByKey[detailKey]) return;
+
+    try {
+      setLoadingRoomMemberKey(detailKey);
+      const data = await backendGraphQLFetchJson<{ roomMember: RoomMemberDetail | null }>(
+        GET_ROOM_MEMBER_DETAIL,
+        { roomId, userId: memberId },
+      );
+      const roomMember = data.roomMember;
+      if (!roomMember) return;
+      setRoomMemberDetailsByKey((prev) => ({
+        ...prev,
+        [detailKey]: roomMember,
+      }));
+    } catch {
+      showToast("Impossible de charger le détail du membre.");
+    } finally {
+      setLoadingRoomMemberKey(null);
+    }
+  };
+
+  const loadAcademicEventDetail = async (eventId: string) => {
+    setSelectedAcademicEventId(eventId);
+    if (academicEventDetailsById[eventId]) return;
+
+    try {
+      setLoadingAcademicEventId(eventId);
+      const data = await backendGraphQLFetchJson<{ academicEvent: GraphqlAcademicEvent | null }>(
+        GET_ACADEMIC_EVENT_DETAIL,
+        { id: eventId },
+      );
+      const academicEvent = data.academicEvent;
+      if (!academicEvent) return;
+      setAcademicEventDetailsById((prev) => ({
+        ...prev,
+        [eventId]: academicEvent,
+      }));
+    } catch {
+      showToast("Impossible de charger le détail de l'événement.");
+    } finally {
+      setLoadingAcademicEventId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab !== "calendar") return;
+
     const loadCalendar = async () => {
       try {
-        const config = await backendFetchJson<BackendCalendarConfig | null>(
-          "/admin-agent/calendar",
+        const data = await backendGraphQLFetchJson<{ calendrierAcademique: GraphqlAcademicEvent[] }>(
+          GET_ACADEMIC_CALENDAR,
         );
-        if (!config) return;
+        const events = data.calendrierAcademique ?? [];
+        setAcademicEventsSummary(events);
 
-        const c = {
-          s1_ds: config.s1_ds ?? config.dsRemise,
-          s1_exam: config.s1_exam ?? config.examRemise,
-          s1_grades_ds: config.s1_grades_ds ?? config.dsRemise,
-          s1_publish_ds: config.s1_publish_ds ?? config.dsAffichage,
-          s1_grades_exam: config.s1_grades_exam ?? config.examRemise,
-          s1_publish_exam: config.s1_publish_exam ?? config.examAffichage,
-          s1_delib: config.s1_delib ?? config.sem1Deliberation,
-          s2_ds: config.s2_ds ?? config.dsRemise,
-          s2_exam: config.s2_exam ?? config.examRemise,
-          s2_grades_ds: config.s2_grades_ds ?? config.dsRemise,
-          s2_publish_ds: config.s2_publish_ds ?? config.dsAffichage,
-          s2_grades_exam: config.s2_grades_exam ?? config.examRemise,
-          s2_publish_exam: config.s2_publish_exam ?? config.examAffichage,
-          s2_delib: config.s2_delib ?? config.sem2Deliberation,
-          end_year: config.end_year ?? config.deliberationFinale,
-        };
-
-        const nextEvents = [
-          toCalendarEvent(c.s1_ds, "exam", "Date début DS S1"),
-          toCalendarEvent(c.s1_grades_ds, "grading", "Date limite remise notes DS S1"),
-          toCalendarEvent(c.s1_publish_ds, "deadline", "Affichage notes DS S1"),
-          toCalendarEvent(c.s1_exam, "exam", "Date début examens S1"),
-          toCalendarEvent(c.s1_grades_exam, "grading", "Date limite remise notes examens S1"),
-          toCalendarEvent(c.s1_publish_exam, "deadline", "Affichage notes examens S1"),
-          toCalendarEvent(c.s1_delib, "deadline", "Délibération semestre 1"),
-          toCalendarEvent(c.s2_ds, "exam", "Date début DS S2"),
-          toCalendarEvent(c.s2_grades_ds, "grading", "Date limite remise notes DS S2"),
-          toCalendarEvent(c.s2_publish_ds, "deadline", "Affichage notes DS S2"),
-          toCalendarEvent(c.s2_exam, "exam", "Date début examens S2"),
-          toCalendarEvent(c.s2_grades_exam, "grading", "Date limite remise notes examens S2"),
-          toCalendarEvent(c.s2_publish_exam, "deadline", "Affichage notes examens S2"),
-          toCalendarEvent(c.s2_delib, "deadline", "Délibération semestre 2"),
-          toCalendarEvent(c.end_year, "deadline", "Délibération fin d'année"),
-        ].filter((event): event is CalendarEvent => event !== null);
-
-        const nextRows: TeacherCalendarRow[] = [
-          { event: "Date début DS S1", date: formatDate(c.s1_ds), badge: "Examens" },
-          { event: "Date limite remise notes DS S1", date: formatDate(c.s1_grades_ds), badge: "Évaluation" },
-          { event: "Affichage notes DS S1", date: formatDate(c.s1_publish_ds), badge: "Affichage" },
-          { event: "Date début examens S1", date: formatDate(c.s1_exam), badge: "Examens" },
-          { event: "Date limite remise notes examens S1", date: formatDate(c.s1_grades_exam), badge: "Évaluation" },
-          { event: "Affichage notes examens S1", date: formatDate(c.s1_publish_exam), badge: "Affichage" },
-          { event: "Délibération semestre 1", date: formatDate(c.s1_delib), badge: "Calendrier" },
-          { event: "Date début DS S2", date: formatDate(c.s2_ds), badge: "Examens" },
-          { event: "Date limite remise notes DS S2", date: formatDate(c.s2_grades_ds), badge: "Évaluation" },
-          { event: "Affichage notes DS S2", date: formatDate(c.s2_publish_ds), badge: "Affichage" },
-          { event: "Date début examens S2", date: formatDate(c.s2_exam), badge: "Examens" },
-          { event: "Date limite remise notes examens S2", date: formatDate(c.s2_grades_exam), badge: "Évaluation" },
-          { event: "Affichage notes examens S2", date: formatDate(c.s2_publish_exam), badge: "Affichage" },
-          { event: "Délibération semestre 2", date: formatDate(c.s2_delib), badge: "Calendrier" },
-          { event: "Délibération fin d'année", date: formatDate(c.end_year), badge: "Calendrier" },
-        ];
+        const nextEvents = events
+          .map((event) =>
+            toCalendarEvent(
+              event.dateDebut ?? event.dateFin,
+              event.type === "DS" || event.type === "EXAMEN" ? "exam" : "deadline",
+              event.nom,
+            ),
+          )
+          .filter((event): event is CalendarEvent => event !== null);
 
         setCalendarEvents(nextEvents);
-        setCalendarRows(nextRows);
       } catch (error) {
         console.error(error);
         showToast("Impossible de charger le calendrier académique.");
@@ -503,20 +579,22 @@ export default function TeacherDashboard() {
     if (!newRoomName.trim() || !newRoomSubject.trim()) return;
 
     try {
-      const created = await backendFetchJson<any>("/teacher/rooms", {
-        method: "POST",
-        body: JSON.stringify({
-          name: newRoomName.trim(),
-          targetYear: newRoomYear,
-          teacherId: String(user.id),
-        }),
-      });
+      const created = await backendGraphQLFetchJson<{ createRoom: any }>(
+        CREATE_ROOM,
+        {
+          input: {
+            name: newRoomName.trim(),
+            targetYear: newRoomYear,
+            teacherId: String(user.id),
+          },
+        },
+      );
 
       const newRoom: Room = {
-        id: created.id,
-        name: created.name,
+        id: created.createRoom.id,
+        name: created.createRoom.name,
         subject: newRoomSubject,
-        targetYear: created.targetYear,
+        targetYear: created.createRoom.targetYear,
         bgGradient: newRoomGradient,
         posts: [],
         homeworks: [],
@@ -551,29 +629,56 @@ export default function TeacherDashboard() {
     if (!postContent.trim() || !selectedRoomId) return;
 
     try {
-      const created = await backendFetchJson<any>(`/teacher/rooms/${selectedRoomId}/posts`, {
-        method: "POST",
-        body: JSON.stringify({
-          content: postContent.trim(),
-          type: attachedFile ? "document" : "announcement",
-          author: user.name || "Enseignant",
-        }),
-      });
+      let createdPost: any;
+      if (attachedFile) {
+        const formData = new FormData();
+        formData.append("content", postContent.trim());
+        formData.append("type", "document");
+        formData.append("author", user.name || "Enseignant");
+        formData.append("file", attachedFile);
+        createdPost = await backendFetchJson<any>(
+          `/teacher/rooms/${selectedRoomId}/posts`,
+          {
+            method: "POST",
+            body: formData,
+          },
+        );
+      } else {
+        const created = await backendGraphQLFetchJson<{ createRoomPost: any }>(
+          CREATE_ROOM_POST,
+          {
+            roomId: selectedRoomId,
+            input: {
+              content: postContent.trim(),
+              type: "announcement",
+              author: user.name || "Enseignant",
+            },
+          },
+        );
+        createdPost = created.createRoomPost;
+      }
 
       const newPost: RoomPost = {
-        id: created.id,
+        id: createdPost.id,
         author: user.name || "Enseignant",
         avatar: user.name ? user.name[0].toUpperCase() : "E",
         date: "À l'instant",
-        content: created.content,
-        type: created.type,
-        fileName: attachedFile ? attachedFile.name : undefined,
-        fileSize: attachedFile ? (attachedFile.size / (1024 * 1024)).toFixed(2) + " Mo" : undefined,
+        content: createdPost.content,
+        type: createdPost.type,
+        fileName: createdPost.fileName ?? attachedFile?.name ?? undefined,
+        filePath: createdPost.filePath ?? null,
+        fileSizeBytes: createdPost.fileSizeBytes ?? attachedFile?.size ?? null,
         isMe: true,
         comments: [],
       };
 
-      setRooms(rooms.map(r => r.id === selectedRoomId ? { ...r, posts: [newPost, ...r.posts] } : r));
+      setRooms((prev) =>
+        prev.map((room) =>
+          room.id === selectedRoomId
+            ? { ...room, posts: [newPost, ...room.posts] }
+            : room,
+        ),
+      );
       setPostContent("");
       setAttachedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -587,20 +692,25 @@ export default function TeacherDashboard() {
     if (!hwTitle.trim() || !hwDesc.trim() || !hwDeadline.trim() || !selectedRoomId) return;
 
     try {
-      const created = await backendFetchJson<any>(`/teacher/rooms/${selectedRoomId}/homeworks`, {
-        method: "POST",
-        body: JSON.stringify({
-          title: hwTitle.trim(),
-          description: hwDesc.trim(),
-          deadline: hwDeadline,
-        }),
-      });
+      const created = await backendGraphQLFetchJson<{ createRoomHomework: any }>(
+        CREATE_ROOM_HOMEWORK,
+        {
+          roomId: selectedRoomId,
+          input: {
+            title: hwTitle.trim(),
+            description: hwDesc.trim(),
+            deadline: hwDeadline,
+          },
+        },
+      );
 
       const newHw: Homework = {
-        id: created.id,
-        title: created.title,
-        description: created.description,
-        deadline: typeof created.deadline === "string" ? created.deadline.slice(0, 10) : hwDeadline,
+        id: created.createRoomHomework.id,
+        title: created.createRoomHomework.title,
+        description: created.createRoomHomework.description,
+        deadline: typeof created.createRoomHomework.deadline === "string"
+          ? created.createRoomHomework.deadline.slice(0, 10)
+          : hwDeadline,
         submissionsCount: 0,
       };
 
@@ -612,6 +722,30 @@ export default function TeacherDashboard() {
       showToast("Devoir assigné !");
     } catch {
       showToast("Impossible d'assigner le devoir.");
+    }
+  };
+
+  const handleToggleHomeworkSubmissions = async (homeworkId: string) => {
+    if (expandedHomeworkId === homeworkId) {
+      setExpandedHomeworkId(null);
+      return;
+    }
+
+    setExpandedHomeworkId(homeworkId);
+    if (homeworkSubmissionsById[homeworkId]) return;
+
+    try {
+      setLoadingHomeworkSubmissionsId(homeworkId);
+      const submissions = await backendGraphQLFetchJson<{ homeworkSubmissions: HomeworkSubmission[] }>(
+        GET_HOMEWORK_SUBMISSIONS,
+        { homeworkId },
+      );
+      setHomeworkSubmissionsById((prev) => ({ ...prev, [homeworkId]: submissions.homeworkSubmissions }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erreur inconnue";
+      showToast(`Impossible de charger les soumissions: ${message}`);
+    } finally {
+      setLoadingHomeworkSubmissionsId(null);
     }
   };
 
@@ -1013,6 +1147,54 @@ export default function TeacherDashboard() {
                   <p className="text-white/80 font-semibold mt-1 relative z-10">{selectedRoom.subject} • Classe : {selectedRoom.targetYear}</p>
                 </div>
 
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-extrabold text-slate-800">Membres de la room</h3>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">
+                      {selectedRoom.targetYear}
+                    </span>
+                  </div>
+                  {loadingRoomMembersRoomId === selectedRoom.id ? (
+                    <p className="text-xs text-slate-500 font-semibold">Chargement des membres...</p>
+                  ) : (roomMembersByRoomId[selectedRoom.id] ?? []).length === 0 ? (
+                    <p className="text-xs text-slate-500 font-semibold">Aucun membre trouvé.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {(roomMembersByRoomId[selectedRoom.id] ?? []).map((member) => (
+                        <button
+                          key={member.id}
+                          onClick={() => { void handleLoadRoomMemberDetail(selectedRoom.id, member.id); }}
+                          className={`text-left rounded-2xl border px-3 py-2 transition-colors ${
+                            selectedRoomMemberId === member.id
+                              ? "border-teal-300 bg-teal-50"
+                              : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+                          }`}
+                        >
+                          <p className="text-xs font-bold text-slate-800">{member.name}</p>
+                          <p className="text-[10px] font-semibold text-slate-500">Année: {member.year}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {selectedRoomMemberId && (
+                    <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                      {loadingRoomMemberKey === selectedRoomMemberDetailKey ? (
+                        <p className="text-xs text-slate-500 font-semibold">Chargement du détail...</p>
+                      ) : selectedRoomMemberDetail ? (
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-slate-800">{selectedRoomMemberDetail.name}</p>
+                          <p className="text-[11px] text-slate-600">Email: {selectedRoomMemberDetail.email}</p>
+                          <p className="text-[11px] text-slate-600">Rôle: {selectedRoomMemberDetail.role}</p>
+                          <p className="text-[11px] text-slate-600">Année: {selectedRoomMemberDetail.year}</p>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-500 font-semibold">Aucun détail disponible.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {/* Composer */}
                 <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
                   <div className="flex gap-4 mb-4 border-b border-slate-100 pb-2">
@@ -1102,8 +1284,55 @@ export default function TeacherDashboard() {
                       <p className="text-sm text-slate-500 mt-1 mb-4 ml-2">{hw.description}</p>
                       <div className="ml-2 pt-3 border-t border-slate-100 flex justify-between items-center">
                         <span className="text-xs font-bold text-slate-500">{hw.submissionsCount} étudiant(s) ont remis le devoir</span>
-                        <button className="text-teal-600 text-xs font-bold hover:underline">Voir les soumissions</button>
+                        <button
+                          onClick={() => { void handleToggleHomeworkSubmissions(hw.id); }}
+                          className="text-teal-600 text-xs font-bold hover:underline"
+                        >
+                          {expandedHomeworkId === hw.id ? "Masquer les soumissions" : "Voir les soumissions"}
+                        </button>
                       </div>
+                      {expandedHomeworkId === hw.id && (
+                        <div className="ml-2 mt-3 rounded-2xl border border-slate-100 bg-slate-50 p-3 space-y-2">
+                          {loadingHomeworkSubmissionsId === hw.id ? (
+                            <p className="text-xs text-slate-500 font-semibold">Chargement des soumissions...</p>
+                          ) : (homeworkSubmissionsById[hw.id] ?? []).length === 0 ? (
+                            <p className="text-xs text-slate-500 font-semibold">Aucune soumission pour ce devoir.</p>
+                          ) : (
+                            (homeworkSubmissionsById[hw.id] ?? []).map((submission) => (
+                              <div
+                                key={submission.id}
+                                className="rounded-xl bg-white border border-slate-100 px-3 py-2"
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="text-xs font-bold text-slate-700">{submission.studentName}</span>
+                                  <span className="text-[11px] font-semibold text-slate-500">
+                                    {formatDateTime(submission.submittedAt)}
+                                  </span>
+                                </div>
+                                {submission.filePath ? (
+                                  <div className="mt-2 flex items-center justify-between gap-3">
+                                    <span className="text-[11px] font-semibold text-slate-600 truncate">
+                                      {submission.fileName || "Fichier joint"}
+                                    </span>
+                                    <a
+                                      href={buildBackendUrl(submission.filePath)}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-[11px] font-bold text-teal-600 hover:underline whitespace-nowrap"
+                                    >
+                                      Voir/Télécharger
+                                    </a>
+                                  </div>
+                                ) : (
+                                  <p className="mt-2 text-[11px] font-semibold text-slate-400">
+                                    Aucun fichier joint.
+                                  </p>
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
 
@@ -1130,9 +1359,21 @@ export default function TeacherDashboard() {
                             </div>
                             <div>
                               <div className="text-xs font-bold text-slate-800">{post.fileName}</div>
-                              <div className="text-[10px] text-slate-400 font-semibold">{post.fileSize}</div>
+                              <div className="text-[10px] text-slate-400 font-semibold">
+                                {post.fileSize || formatFileSize(post.fileSizeBytes)}
+                              </div>
                             </div>
                           </div>
+                          {post.filePath ? (
+                            <a
+                              href={buildBackendUrl(post.filePath)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[11px] font-bold text-teal-600 hover:underline whitespace-nowrap"
+                            >
+                              Voir/Télécharger
+                            </a>
+                          ) : null}
                         </div>
                       )}
 
@@ -1174,17 +1415,54 @@ export default function TeacherDashboard() {
                 <div className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden p-6">
                   <h4 className="text-xs font-extrabold text-slate-800 mb-4">Toutes les dates essentielles</h4>
                   <div className="space-y-3">
-                    {calendarRows.map((evt, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                    {academicEventsSummary.map((evt) => (
+                      <button
+                        key={evt.id}
+                        onClick={() => { void loadAcademicEventDetail(evt.id); }}
+                        className="w-full text-left flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:bg-slate-100/70 transition-colors"
+                      >
                         <div className="flex items-center gap-3">
-                          <div className={`w-2 h-2 rounded-full ${evt.badge === "Examens" ? "bg-red-500" : evt.badge === "Évaluation" ? "bg-amber-500" : evt.badge === "Affichage" ? "bg-purple-500" : "bg-slate-500"}`}></div>
-                          <span className="text-xs font-bold text-slate-700">{evt.event}</span>
+                          <div className={`w-2 h-2 rounded-full ${
+                            evt.type === "DS" || evt.type === "EXAMEN"
+                              ? "bg-red-500"
+                              : evt.type === "AFFICHAGE"
+                                ? "bg-purple-500"
+                                : "bg-slate-500"
+                          }`}></div>
+                          <span className="text-xs font-bold text-slate-700">{evt.nom}</span>
                         </div>
-                        <span className="text-[10px] text-slate-500 font-semibold">{evt.date}</span>
-                      </div>
+                        <span className="text-[10px] text-slate-500 font-semibold">
+                          {formatDate(evt.dateDebut ?? evt.dateFin ?? "")}
+                        </span>
+                      </button>
                     ))}
                   </div>
                 </div>
+
+                {selectedAcademicEventId && (
+                  <div className="bg-white border border-slate-100 rounded-3xl shadow-sm p-5">
+                    {loadingAcademicEventId === selectedAcademicEventId ? (
+                      <p className="text-xs text-slate-500 font-semibold">Chargement du détail...</p>
+                    ) : academicEventDetailsById[selectedAcademicEventId] ? (
+                      <div className="space-y-1">
+                        <h4 className="text-sm font-extrabold text-slate-800">
+                          {academicEventDetailsById[selectedAcademicEventId].nom}
+                        </h4>
+                        <p className="text-xs text-slate-600">
+                          Début: {academicEventDetailsById[selectedAcademicEventId].dateDebut || "—"}
+                        </p>
+                        <p className="text-xs text-slate-600">
+                          Fin: {academicEventDetailsById[selectedAcademicEventId].dateFin || "—"}
+                        </p>
+                        <p className="text-xs text-slate-600">
+                          Type: {academicEventDetailsById[selectedAcademicEventId].type}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-500 font-semibold">Aucun détail disponible.</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

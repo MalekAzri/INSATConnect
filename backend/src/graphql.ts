@@ -22,6 +22,29 @@ export enum DocumentCategorie {
     PLANNING = "PLANNING"
 }
 
+export class CreateRoomInput {
+    name: string;
+    targetYear: string;
+    teacherId: string;
+}
+
+export class CreateRoomPostInput {
+    content: string;
+    type?: Nullable<string>;
+    author?: Nullable<string>;
+}
+
+export class CreateRoomHomeworkInput {
+    title: string;
+    description: string;
+    deadline: string;
+}
+
+export class CreateRoomCommentInput {
+    content: string;
+    authorName: string;
+}
+
 export class Document {
     id: string;
     titre: string;
@@ -86,6 +109,8 @@ export class Publication {
 export abstract class IQuery {
     abstract publications(targetYear?: Nullable<string>): Publication[] | Promise<Publication[]>;
 
+    abstract publication(id: string): Nullable<Publication> | Promise<Nullable<Publication>>;
+
     abstract documents(categorie?: Nullable<string>): Nullable<Document>[] | Promise<Nullable<Document>[]>;
 
     abstract document(id: string): Nullable<Document> | Promise<Nullable<Document>>;
@@ -95,6 +120,89 @@ export abstract class IQuery {
     abstract mesNotes(): Grade[] | Promise<Grade[]>;
 
     abstract calendrierAcademique(): AcademicEvent[] | Promise<AcademicEvent[]>;
+
+    abstract academicEvent(id: string): Nullable<AcademicEvent> | Promise<Nullable<AcademicEvent>>;
+
+    abstract rooms(): RoomType[] | Promise<RoomType[]>;
+
+    abstract room(id: string): Nullable<RoomType> | Promise<Nullable<RoomType>>;
+
+    abstract roomMembers(roomId: string): RoomMemberSummaryType[] | Promise<RoomMemberSummaryType[]>;
+
+    abstract roomMember(roomId: string, userId: string): Nullable<RoomMemberDetailType> | Promise<Nullable<RoomMemberDetailType>>;
+
+    abstract homeworksByYear(year: string): HomeworkType[] | Promise<HomeworkType[]>;
+
+    abstract homeworkSubmissions(homeworkId: string): HomeworkSubmissionType[] | Promise<HomeworkSubmissionType[]>;
+}
+
+export class RoomCommentType {
+    id: string;
+    authorName: string;
+    content: string;
+    createdAt: string;
+}
+
+export class PostType {
+    id: string;
+    content: string;
+    type: string;
+    author: string;
+    fileName?: Nullable<string>;
+    filePath?: Nullable<string>;
+    fileSizeBytes?: Nullable<number>;
+    comments: RoomCommentType[];
+}
+
+export class HomeworkSubmissionType {
+    id: string;
+    studentName: string;
+    submittedAt: string;
+    fileName?: Nullable<string>;
+    filePath?: Nullable<string>;
+    fileSizeBytes?: Nullable<number>;
+}
+
+export class HomeworkType {
+    id: string;
+    title: string;
+    description: string;
+    deadline: string;
+    submissions: HomeworkSubmissionType[];
+}
+
+export class RoomType {
+    id: string;
+    name: string;
+    targetYear: string;
+    teacherId: string;
+    teacherName?: Nullable<string>;
+    posts: PostType[];
+    homeworks: HomeworkType[];
+}
+
+export class RoomMemberSummaryType {
+    id: string;
+    name: string;
+    year: string;
+}
+
+export class RoomMemberDetailType {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    year: string;
+}
+
+export abstract class IMutation {
+    abstract createRoom(input: CreateRoomInput): RoomType | Promise<RoomType>;
+
+    abstract createRoomPost(roomId: string, input: CreateRoomPostInput): PostType | Promise<PostType>;
+
+    abstract createRoomHomework(roomId: string, input: CreateRoomHomeworkInput): HomeworkType | Promise<HomeworkType>;
+
+    abstract createRoomComment(postId: string, input: CreateRoomCommentInput): RoomCommentType | Promise<RoomCommentType>;
 }
 
 type Nullable<T> = T | null;
