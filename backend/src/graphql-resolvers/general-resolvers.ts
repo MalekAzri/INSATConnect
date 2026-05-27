@@ -104,6 +104,72 @@ const mapPublication = (pub: AnyRecord) => ({
   grades: pub.grades ? JSON.parse(String(pub.grades)) : null,
 });
 
+const mapAdminPublication = (pub: AnyRecord) => ({
+  id: String(pub.id),
+  title: String(pub.title ?? ''),
+  category: String(pub.category ?? ''),
+  content: String(pub.content ?? ''),
+  author: String(pub.author ?? ''),
+  targetYear: pub.targetYear ?? null,
+  fileName: pub.fileName ?? null,
+  filePath: pub.filePath ?? null,
+  fileSizeBytes:
+    pub.fileSizeBytes && Number.isFinite(Number(pub.fileSizeBytes))
+      ? Number(pub.fileSizeBytes)
+      : null,
+  createdAt: toIso(pub.createdAt),
+});
+
+const parseGradeEntries = (
+  entries: unknown,
+): Array<{
+  studentId: string;
+  lastName: string;
+  firstName: string;
+  grade: number;
+}> => {
+  let parsed: unknown = entries;
+  if (typeof entries === 'string') {
+    try {
+      parsed = JSON.parse(entries);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(parsed)) return [];
+
+  return parsed.map((row) => {
+    const record = row as AnyRecord;
+    return {
+      studentId: String(record.studentId ?? ''),
+      lastName: String(record.lastName ?? ''),
+      firstName: String(record.firstName ?? ''),
+      grade: Number(record.grade ?? 0),
+    };
+  });
+};
+
+const mapAdminGradeSubmission = (submission: AnyRecord) => ({
+  id: String(submission.id),
+  teacherName: String(submission.teacherName ?? ''),
+  teacherEmail: submission.teacherEmail ?? null,
+  targetYear: String(submission.targetYear ?? ''),
+  semester: String(submission.semester ?? ''),
+  subject: String(submission.subject ?? ''),
+  examType: String(submission.examType ?? 'DS'),
+  title: String(submission.title ?? ''),
+  summary: submission.summary ?? null,
+  entries: parseGradeEntries(submission.entries),
+  status: String(submission.status ?? 'pending'),
+  validatedBy: submission.validatedBy ?? null,
+  validatedAt: submission.validatedAt ? toIso(submission.validatedAt) : null,
+  publishedBy: submission.publishedBy ?? null,
+  publishedAt: submission.publishedAt ? toIso(submission.publishedAt) : null,
+  publicationId: submission.publicationId ?? null,
+  createdAt: toIso(submission.createdAt),
+  updatedAt: toIso(submission.updatedAt),
+});
+
 const buildAcademicEventsFromConfig = (config: AnyRecord) => {
   const events: Array<{
     id: string;
@@ -218,6 +284,103 @@ export const createApolloResolvers = (
       });
       if (!publication) return null;
       return mapPublication(publication as AnyRecord);
+    },
+
+    adminPublications: async (
+      _parent: unknown,
+      args: {
+        category?: string;
+        targetYear?: string;
+        search?: string;
+        offset?: number;
+        limit?: number;
+      },
+    ) => {
+      const where: AnyRecord = {};
+
+      if (args.category?.trim()) {
+        where.category = args.category.trim().toLowerCase();
+      }
+
+      if (args.targetYear?.trim()) {
+        const normalizedTarget = normalizeTargetYear(args.targetYear);
+        where.OR = [
+          { targetYear: null },
+          { targetYear: { in: ['TOUS', 'ALL', '*'] } },
+          ...(normalizedTarget ? [{ targetYear: { equals: normalizedTarget } }] : []),
+        ];
+      }
+
+      if (args.search?.trim()) {
+        const search = args.search.trim();
+        where.AND = [
+          ...(where.AND || []),
+          {
+            OR: [
+              { title: { contains: search } },
+              { content: { contains: search } },
+            ],
+          },
+        ];
+      }
+
+      const publications = await prisma.publication.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: Number.isFinite(Number(args.offset)) ? Number(args.offset) : 0,
+        take: Number.isFinite(Number(args.limit)) ? Number(args.limit) : 50,
+      });
+
+      return publications.map((publication) =>
+        mapAdminPublication(publication as AnyRecord),
+      );
+    },
+
+    adminPublication: async (_parent: unknown, args: { id: string }) => {
+      const publication = await prisma.publication.findUnique({
+        where: { id: args.id },
+      });
+      if (!publication) return null;
+      return mapAdminPublication(publication as AnyRecord);
+    },
+
+    adminGradeSubmissions: async (
+      _parent: unknown,
+      args: {
+        status?: string;
+        targetYear?: string;
+        offset?: number;
+        limit?: number;
+      },
+    ) => {
+      const where: AnyRecord = {};
+
+      if (args.status?.trim()) {
+        where.status = args.status.trim().toLowerCase();
+      }
+
+      if (args.targetYear?.trim()) {
+        where.targetYear = { equals: args.targetYear.trim().toUpperCase() };
+      }
+
+      const submissions = await prisma.gradeSubmission.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: Number.isFinite(Number(args.offset)) ? Number(args.offset) : 0,
+        take: Number.isFinite(Number(args.limit)) ? Number(args.limit) : 50,
+      });
+
+      return submissions.map((submission) =>
+        mapAdminGradeSubmission(submission as AnyRecord),
+      );
+    },
+
+    adminGradeSubmission: async (_parent: unknown, args: { id: string }) => {
+      const submission = await prisma.gradeSubmission.findUnique({
+        where: { id: args.id },
+      });
+      if (!submission) return null;
+      return mapAdminGradeSubmission(submission as AnyRecord);
     },
 
     document: async (_parent: unknown, args: { id: string }) => {

@@ -45,6 +45,85 @@ export class CreateRoomCommentInput {
     authorName: string;
 }
 
+export class AdminPublication {
+    id: string;
+    title: string;
+    category: string;
+    content: string;
+    author: string;
+    targetYear?: Nullable<string>;
+    fileName?: Nullable<string>;
+    filePath?: Nullable<string>;
+    fileSizeBytes?: Nullable<number>;
+    createdAt: string;
+}
+
+export class AdminGradeEntry {
+    studentId: string;
+    lastName: string;
+    firstName: string;
+    grade: number;
+}
+
+export class AdminGradeSubmission {
+    id: string;
+    teacherName: string;
+    teacherEmail?: Nullable<string>;
+    targetYear: string;
+    semester: string;
+    subject: string;
+    examType: string;
+    title: string;
+    summary?: Nullable<string>;
+    entries: AdminGradeEntry[];
+    status: string;
+    validatedBy?: Nullable<string>;
+    validatedAt?: Nullable<string>;
+    publishedBy?: Nullable<string>;
+    publishedAt?: Nullable<string>;
+    publicationId?: Nullable<string>;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export abstract class IQuery {
+    abstract adminPublications(category?: Nullable<string>, targetYear?: Nullable<string>, search?: Nullable<string>, offset?: Nullable<number>, limit?: Nullable<number>): AdminPublication[] | Promise<AdminPublication[]>;
+
+    abstract adminPublication(id: string): Nullable<AdminPublication> | Promise<Nullable<AdminPublication>>;
+
+    abstract adminGradeSubmissions(status?: Nullable<string>, targetYear?: Nullable<string>, offset?: Nullable<number>, limit?: Nullable<number>): AdminGradeSubmission[] | Promise<AdminGradeSubmission[]>;
+
+    abstract adminGradeSubmission(id: string): Nullable<AdminGradeSubmission> | Promise<Nullable<AdminGradeSubmission>>;
+
+    abstract publications(targetYear?: Nullable<string>): Publication[] | Promise<Publication[]>;
+
+    abstract publication(id: string): Nullable<Publication> | Promise<Nullable<Publication>>;
+
+    abstract documents(categorie?: Nullable<string>): Nullable<Document>[] | Promise<Nullable<Document>[]>;
+
+    abstract document(id: string): Nullable<Document> | Promise<Nullable<Document>>;
+
+    abstract emploiDuTemps(): Nullable<Timetable> | Promise<Nullable<Timetable>>;
+
+    abstract mesNotes(): Grade[] | Promise<Grade[]>;
+
+    abstract calendrierAcademique(): AcademicEvent[] | Promise<AcademicEvent[]>;
+
+    abstract academicEvent(id: string): Nullable<AcademicEvent> | Promise<Nullable<AcademicEvent>>;
+
+    abstract rooms(): RoomType[] | Promise<RoomType[]>;
+
+    abstract room(id: string): Nullable<RoomType> | Promise<Nullable<RoomType>>;
+
+    abstract roomMembers(roomId: string): RoomMemberSummaryType[] | Promise<RoomMemberSummaryType[]>;
+
+    abstract roomMember(roomId: string, userId: string): Nullable<RoomMemberDetailType> | Promise<Nullable<RoomMemberDetailType>>;
+
+    abstract homeworksByYear(year: string): HomeworkType[] | Promise<HomeworkType[]>;
+
+    abstract homeworkSubmissions(homeworkId: string): HomeworkSubmissionType[] | Promise<HomeworkSubmissionType[]>;
+}
+
 export class Document {
     id: string;
     titre: string;
@@ -104,36 +183,6 @@ export class Publication {
     fileName?: Nullable<string>;
     fileSize?: Nullable<string>;
     grades?: Nullable<PublicationGradeLine[]>;
-}
-
-export abstract class IQuery {
-    abstract publications(targetYear?: Nullable<string>): Publication[] | Promise<Publication[]>;
-
-    abstract publication(id: string): Nullable<Publication> | Promise<Nullable<Publication>>;
-
-    abstract documents(categorie?: Nullable<string>): Nullable<Document>[] | Promise<Nullable<Document>[]>;
-
-    abstract document(id: string): Nullable<Document> | Promise<Nullable<Document>>;
-
-    abstract emploiDuTemps(): Nullable<Timetable> | Promise<Nullable<Timetable>>;
-
-    abstract mesNotes(): Grade[] | Promise<Grade[]>;
-
-    abstract calendrierAcademique(): AcademicEvent[] | Promise<AcademicEvent[]>;
-
-    abstract academicEvent(id: string): Nullable<AcademicEvent> | Promise<Nullable<AcademicEvent>>;
-
-    abstract rooms(): RoomType[] | Promise<RoomType[]>;
-
-    abstract room(id: string): Nullable<RoomType> | Promise<Nullable<RoomType>>;
-
-    abstract roomMembers(roomId: string): RoomMemberSummaryType[] | Promise<RoomMemberSummaryType[]>;
-
-    abstract roomMember(roomId: string, userId: string): Nullable<RoomMemberDetailType> | Promise<Nullable<RoomMemberDetailType>>;
-
-    abstract homeworksByYear(year: string): HomeworkType[] | Promise<HomeworkType[]>;
-
-    abstract homeworkSubmissions(homeworkId: string): HomeworkSubmissionType[] | Promise<HomeworkSubmissionType[]>;
 }
 
 export class RoomCommentType {

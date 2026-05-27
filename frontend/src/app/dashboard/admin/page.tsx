@@ -6,7 +6,11 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CalendarGrid, { CalendarEvent } from "@/components/Calendar";
 import { useChat } from "@/hooks/useChat";
-import { backendFetchJson, buildBackendUrl } from "@/lib/backend";
+import { backendFetchJson, backendGraphQLFetchJson, buildBackendUrl } from "@/lib/backend";
+import {
+  GET_ADMIN_GRADE_SUBMISSIONS,
+  GET_ADMIN_PUBLICATIONS,
+} from "@/graphql/queries";
 import { 
   Bell, 
   Menu, 
@@ -393,18 +397,17 @@ export default function AdminDashboard() {
   const loadGradeSubmissions = async () => {
     setIsLoadingGrades(true);
     try {
-      const params = new URLSearchParams();
-      params.set("limit", "100");
-      if (gradeStatusFilter !== "all") {
-        params.set("status", gradeStatusFilter);
-      }
-      if (gradeTargetFilter !== "ALL") {
-        params.set("targetYear", gradeTargetFilter);
-      }
-      const data = await backendFetchJson<BackendGradeSubmission[]>(
-        `/admin-agent/grades/submissions?${params.toString()}`,
+      const data = await backendGraphQLFetchJson<{
+        adminGradeSubmissions: BackendGradeSubmission[];
+      }>(
+        GET_ADMIN_GRADE_SUBMISSIONS,
+        {
+          limit: 100,
+          status: gradeStatusFilter !== "all" ? gradeStatusFilter : undefined,
+          targetYear: gradeTargetFilter !== "ALL" ? gradeTargetFilter : undefined,
+        },
       );
-      setGradeSubmissions(data);
+      setGradeSubmissions(data.adminGradeSubmissions ?? []);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erreur inconnue";
       showToast(`Impossible de charger les soumissions de notes: ${message}`);
@@ -531,10 +534,17 @@ export default function AdminDashboard() {
     const loadFeed = async () => {
       setIsLoadingFeed(true);
       try {
-        const publications = await backendFetchJson<BackendPublication[]>(
-          "/admin-agent/publications?limit=100",
+        const data = await backendGraphQLFetchJson<{
+          adminPublications: BackendPublication[];
+        }>(
+          GET_ADMIN_PUBLICATIONS,
+          { limit: 100 },
         );
-        setFeedPosts(publications.filter((publication) => publication.category !== "notes").map(toPost));
+        setFeedPosts(
+          (data.adminPublications ?? [])
+            .filter((publication) => publication.category !== "notes")
+            .map(toPost),
+        );
       } catch (error) {
         console.error(error);
         showToast("Impossible de charger les publications backend.");

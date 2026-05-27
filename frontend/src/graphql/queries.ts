@@ -38,6 +38,75 @@ export const GET_PUBLICATION_DETAIL = `
   }
 `;
 
+export const GET_ADMIN_PUBLICATIONS = `
+  query GetAdminPublications(
+    $category: String
+    $targetYear: String
+    $search: String
+    $offset: Int
+    $limit: Int
+  ) {
+    adminPublications(
+      category: $category
+      targetYear: $targetYear
+      search: $search
+      offset: $offset
+      limit: $limit
+    ) {
+      id
+      title
+      category
+      content
+      author
+      targetYear
+      fileName
+      filePath
+      fileSizeBytes
+      createdAt
+    }
+  }
+`;
+
+export const GET_ADMIN_GRADE_SUBMISSIONS = `
+  query GetAdminGradeSubmissions(
+    $status: String
+    $targetYear: String
+    $offset: Int
+    $limit: Int
+  ) {
+    adminGradeSubmissions(
+      status: $status
+      targetYear: $targetYear
+      offset: $offset
+      limit: $limit
+    ) {
+      id
+      teacherName
+      teacherEmail
+      targetYear
+      semester
+      subject
+      examType
+      title
+      summary
+      entries {
+        studentId
+        lastName
+        firstName
+        grade
+      }
+      status
+      validatedBy
+      validatedAt
+      publishedBy
+      publishedAt
+      publicationId
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
 // 5. Calendrier Académique
 export const GET_ACADEMIC_CALENDAR = `
   query GetAcademicCalendar {
