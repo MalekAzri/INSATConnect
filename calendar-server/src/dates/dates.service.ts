@@ -8,37 +8,36 @@ export class DatesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async setDates(dto: SetDatesDto): Promise<void> {
-    const entries = [
-      { key: 'ds_remise', date: dto.dsRemise, targetRole: 'professeur' },
-      { key: 'exam_remise', date: dto.examRemise, targetRole: 'professeur' },
-      { key: 'ds_affichage', date: dto.dsAffichage, targetRole: 'admin' },
-      { key: 'exam_affichage', date: dto.examAffichage, targetRole: 'admin' },
-      {
-        key: 'sem1_deliberation',
-        date: dto.sem1Deliberation,
-        targetRole: 'admin',
-      },
-      {
-        key: 'sem2_deliberation',
-        date: dto.sem2Deliberation,
-        targetRole: 'admin',
-      },
-      {
-        key: 'final_deliberation',
-        date: dto.DeliberationFinale,
-        targetRole: 'admin',
-      },
-    ];
+    const entries: { key: string; date: string; targetRole: string }[] = [
+      // ── Semestre 1 ────────────────────────────────────────────────────────
+      { key: 's1_ds',             date: dto.s1_ds,                              targetRole: 'admin' },
+      { key: 's1_exam',           date: dto.s1_exam,                            targetRole: 'admin' },
+      { key: 'ds_remise',         date: dto.s1_grades_ds   ?? dto.dsRemise,     targetRole: 'professeur' },
+      { key: 'ds_affichage',      date: dto.s1_publish_ds  ?? dto.dsAffichage,  targetRole: 'admin' },
+      { key: 'exam_remise',       date: dto.s1_grades_exam ?? dto.examRemise,   targetRole: 'professeur' },
+      { key: 'exam_affichage',    date: dto.s1_publish_exam?? dto.examAffichage,targetRole: 'admin' },
+      { key: 'sem1_deliberation', date: dto.s1_delib       ?? dto.sem1Deliberation, targetRole: 'admin' },
+
+      // ── Semestre 2 ────────────────────────────────────────────────────────
+      { key: 's2_ds',             date: dto.s2_ds,          targetRole: 'admin' },
+      { key: 's2_exam',           date: dto.s2_exam,        targetRole: 'admin' },
+      { key: 's2_grades_ds',      date: dto.s2_grades_ds,   targetRole: 'professeur' },
+      { key: 's2_publish_ds',     date: dto.s2_publish_ds,  targetRole: 'admin' },
+      { key: 's2_grades_exam',    date: dto.s2_grades_exam, targetRole: 'professeur' },
+      { key: 's2_publish_exam',   date: dto.s2_publish_exam,targetRole: 'admin' },
+      { key: 'sem2_deliberation', date: dto.s2_delib ?? dto.sem2Deliberation,   targetRole: 'admin' },
+
+      // ── Fin d'année ───────────────────────────────────────────────────────
+      { key: 'final_deliberation', date: dto.end_year ?? dto.DeliberationFinale, targetRole: 'admin' },
+    ]
+    // ✅ filtre ET cast — TypeScript sait que date est string après le filtre
+    .filter((e): e is { key: string; date: string; targetRole: string } => !!e.date);
 
     for (const entry of entries) {
       await this.prisma.academicDate.upsert({
-        where: { key: entry.key },
+        where:  { key: entry.key },
         create: { ...entry, notificationSent: false },
-        update: {
-          date: entry.date,
-          targetRole: entry.targetRole,
-          notificationSent: false,
-        },
+        update: { date: entry.date, targetRole: entry.targetRole, notificationSent: false },
       });
     }
   }

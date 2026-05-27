@@ -6,15 +6,13 @@ import { ValidationPipe } from '@nestjs/common';
 import 'dotenv/config';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true }); // ← ajouté
 
-  // CORS (frontend)
   app.enableCors({
     origin: true,
     credentials: true,
   });
 
-  // Validation globale DTO
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -23,7 +21,6 @@ async function bootstrap() {
     }),
   );
 
-  // Static files (uploads)
   app.useStaticAssets(join(process.cwd(), 'uploads'), {
     prefix: '/uploads',
   });

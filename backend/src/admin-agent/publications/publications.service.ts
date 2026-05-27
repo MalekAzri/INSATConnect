@@ -42,39 +42,39 @@ export class PublicationsService {
   }
 
   async create(
-    dto: CreatePublicationDto,
-    file?: Express.Multer.File,
-  ): Promise<Publication> {
-    const publication = await this.prisma.publication.create({
-      data: {
-        title: dto.title.trim(),
-        category: dto.category,
-        content: dto.content.trim(),
-        author: dto.author?.trim() || 'Scolarité INSAT',
-        targetYear: this.normalizeTargetYear(dto.targetYear),
-        fileName: file?.originalname ?? null,
-        filePath: file ? `/uploads/${file.filename}` : null,
-        fileSizeBytes: file?.size ?? null,
-        grades: dto.grades?.length ? JSON.stringify(dto.grades) : null,
-      },
-    });
+  dto: CreatePublicationDto,
+  file?: Express.Multer.File,
+): Promise<Publication> {
+  const publication = await this.prisma.publication.create({
+    data: {
+      title: dto.title.trim(),
+      category: dto.category,
+      content: dto.content.trim(),
+      author: dto.author?.trim() || 'Scolarité INSAT',
+      targetYear: this.normalizeTargetYear(dto.targetYear),
+      fileName: file?.originalname ?? null,
+      filePath: file ? `/uploads/${file.filename}` : null,
+      fileSizeBytes: file?.size ?? null,
+      grades: dto.grades?.length ? JSON.stringify(dto.grades) : null,
+    },
+  });
 
-    const saved = this.mapToEntity(publication);
+  const saved = this.mapToEntity(publication);
 
-    await this.notificationsService.publish({
-      type: 'publication.created',
-      role: NotificationRole.ALL,
-      message: `Nouvelle publication: ${saved.title}`,
+  await this.notificationsService.publish({
+    type: 'publication.created',
+    role: NotificationRole.STUDENT, 
+    message: `Nouvelle publication: ${saved.title}`,
+    targetYear: saved.targetYear,
+    data: {
+      publicationId: saved.id,
+      category: saved.category,
       targetYear: saved.targetYear,
-      data: {
-        publicationId: saved.id,
-        category: saved.category,
-        targetYear: saved.targetYear,
-      },
-    });
+    },
+  });
 
-    return saved;
-  }
+  return saved;
+}
 
   async findAll(query: ListPublicationsQueryDto): Promise<Publication[]> {
     const where: any = {};

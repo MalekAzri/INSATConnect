@@ -61,6 +61,22 @@ export class GradesService {
       },
     });
 
+    void this.notificationsService.publish({
+      type: 'grades.submitted',
+      role: NotificationRole.ADMIN,
+      targetYear: submission.targetYear,
+      message: `Nouvelle soumission de notes ${submission.subject} (${submission.semester}) pour ${submission.targetYear} par ${submission.teacherName}.`,
+      data: {
+        submissionId: submission.id,
+        teacherName: submission.teacherName,
+        teacherEmail: submission.teacherEmail,
+        targetYear: submission.targetYear,
+        semester: submission.semester,
+        subject: submission.subject,
+        title: submission.title,
+      },
+    }).catch(() => undefined);
+
     return this.mapGradeSubmission(submission);
   }
 

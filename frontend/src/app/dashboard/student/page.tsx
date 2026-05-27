@@ -381,14 +381,30 @@ export default function StudentDashboard() {
       }
     };
 
+    // Handler dédié aux alertes de deadline
+    const handleDeadlineAlert = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data) as RealtimeNotification;
+        setRealtimeNotifications((prev) => {
+          if (prev.some((p) => p.id === data.id)) return prev;
+          return [data, ...prev];
+        });
+        if (data.message) showToast(`⏰ ${data.message}`);
+      } catch (err) {
+        console.error('SSE deadline_alert parse error', err);
+      }
+    };
+
     source.addEventListener('message', handleSseEvent);
     source.addEventListener('publication.created', handleSseEvent);
     source.addEventListener('grades.published', handleSseEvent);
+    source.addEventListener('deadline_alert', handleDeadlineAlert);
 
     return () => {
       source.removeEventListener('message', handleSseEvent);
       source.removeEventListener('publication.created', handleSseEvent);
       source.removeEventListener('grades.published', handleSseEvent);
+      source.removeEventListener('deadline_alert', handleDeadlineAlert);
       source.close();
     };
   }, [user.year, loadFeed]);
@@ -767,15 +783,27 @@ export default function StudentDashboard() {
                 <h4 className="text-xs font-extrabold text-slate-800 pb-2 border-b border-slate-50">Notifications récentes</h4>
                 <div className="mt-2 mb-4 space-y-2 max-h-48 overflow-y-auto">
                   {realtimeNotifications.length > 0 ? (
-                    realtimeNotifications.map((notif, idx) => (
-                      <div key={idx} className="p-2 bg-blue-50/50 border border-blue-100 rounded-xl flex gap-2">
-                        <Sparkles className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-[10px] font-bold text-slate-800">{notif.message}</p>
-                          <p className="text-[9px] text-blue-600 font-semibold">{new Date(notif.timestamp || Date.now()).toLocaleString("fr-FR")}</p>
+                    realtimeNotifications.map((notif, idx) => {
+                      const isDeadline = notif.type === 'deadline_alert';
+                      return (
+                        <div key={idx} className={`p-2 border rounded-xl flex gap-2 ${
+                          isDeadline
+                            ? 'bg-orange-50 border-orange-100'
+                            : 'bg-blue-50/50 border-blue-100'
+                        }`}>
+                          {isDeadline
+                            ? <Clock className="h-4 w-4 text-orange-500 shrink-0 mt-0.5" />
+                            : <Sparkles className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                          }
+                          <div>
+                            <p className="text-[10px] font-bold text-slate-800">{notif.message}</p>
+                            <p className={`text-[9px] font-semibold ${isDeadline ? 'text-orange-600' : 'text-blue-600'}`}>
+                              {new Date(notif.timestamp || Date.now()).toLocaleString("fr-FR")}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <div className="text-slate-400 text-[10px] font-semibold text-center">
                       Aucune nouvelle notification

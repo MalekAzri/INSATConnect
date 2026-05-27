@@ -30,6 +30,7 @@ import {
   FileSpreadsheet,
   Sparkles,
   BookOpen,
+  Bell,
   Plus,
   SendHorizontal,
   ChevronLeft,
@@ -137,6 +138,13 @@ interface BackendGradeSubmission {
   publishedAt?: string | null;
   publicationId?: string | null;
   createdAt: string;
+}
+
+interface RealtimeNotification {
+  id: string;
+  type: string;
+  message: string;
+  timestamp?: string;
 }
 
 interface TeacherGradeRow {
@@ -336,6 +344,8 @@ export default function TeacherDashboard() {
   const [teacherSubmissions, setTeacherSubmissions] = useState<BackendGradeSubmission[]>([]);
   const [isLoadingSubmissions, setIsLoadingSubmissions] = useState(false);
   const [isSubmittingGrades, setIsSubmittingGrades] = useState(false);
+  const [realtimeNotifications, setRealtimeNotifications] = useState<RealtimeNotification[]>([]);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [academicEventsSummary, setAcademicEventsSummary] = useState<GraphqlAcademicEvent[]>([]);
   const [academicEventDetailsById, setAcademicEventDetailsById] = useState<Record<string, GraphqlAcademicEvent>>({});
@@ -353,6 +363,23 @@ export default function TeacherDashboard() {
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  const parseNotificationEvent = (event: MessageEvent): RealtimeNotification | null => {
+    try {
+      const payload = JSON.parse(event.data as string) as any;
+      const eventData = payload?.data ?? payload;
+      const message = eventData?.message ?? payload?.message;
+      if (!message) return null;
+      return {
+        id: payload?.id ?? String(Date.now()),
+        type: payload?.type ?? eventData?.type ?? 'message',
+        message,
+        timestamp: eventData?.timestamp ?? payload?.timestamp ?? new Date().toISOString(),
+      };
+    } catch {
+      return null;
+    }
   };
 
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -442,15 +469,30 @@ export default function TeacherDashboard() {
 
   useEffect(() => {
     if (!user.isLoggedIn || !user.id) return;
+
+    const loadNotificationHistory = async () => {
+      try {
+        const history = await backendFetchJson<RealtimeNotification[]>(
+          `/admin-agent/notifications/history?role=teacher&userId=${user.id}`,
+        );
+        setRealtimeNotifications(history);
+      } catch {
+        // ignore failures on notification history
+      }
+    };
+
+    void loadNotificationHistory();
+
     const sseUrl = buildBackendUrl(`/admin-agent/notifications/stream?role=teacher&userId=${user.id}`);
     const source = new EventSource(sseUrl);
     source.addEventListener("message", (event: MessageEvent) => {
-      try {
-        const data = JSON.parse(event.data as string);
-        if (data?.message) showToast(data.message);
-        void loadRooms();
-      } catch { /* ignore */ }
+      const notification = parseNotificationEvent(event);
+      if (!notification) return;
+      setRealtimeNotifications((prev) => [notification, ...prev].slice(0, 50));
+      showToast(notification.message);
+      void loadRooms();
     });
+
     return () => source.close();
   }, [user.isLoggedIn, user.id, loadRooms]);
 
@@ -1014,13 +1056,46 @@ export default function TeacherDashboard() {
               )}
             </h1>
           </div>
-          <div className="flex items-center gap-4 pl-3 border-l border-slate-100">
-            <div className="w-8 h-8 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center font-bold text-xs">
-              {user.name ? user.name[0] : "E"}
+          <div className="flex items-center gap-4">
+            <div
+              className="relative cursor-pointer"
+              onMouseEnter={() => setIsNotificationsOpen(true)}
+              onMouseLeave={() => setIsNotificationsOpen(false)}
+            >
+              <div className="p-2.5 rounded-2xl hover:bg-slate-50 border border-slate-100 transition-colors flex items-center justify-center text-slate-500 relative">
+                <Bell className="h-5 w-5" />
+                <span className="ml-1 text-xs">{realtimeNotifications.length}</span>
+                {realtimeNotifications.length > 0 && (
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-orange-500 animate-ping"></span>
+                )}
+              </div>
+              <div className={`absolute right-0 mt-3 w-80 rounded-3xl bg-white border border-slate-100 shadow-2xl p-4 z-50 ${isNotificationsOpen ? 'block' : 'hidden'}`}>
+                <h4 className="text-xs font-extrabold text-slate-800 pb-2 border-b border-slate-50">Notifications récentes</h4>
+                <div className="mt-2 space-y-2 max-h-60 overflow-y-auto">
+                  {realtimeNotifications.length > 0 ? (
+                    realtimeNotifications.map((notif) => (
+                      <div key={notif.id} className="p-2 bg-blue-50/50 border border-blue-100 rounded-xl flex gap-2">
+                        <Sparkles className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-800">{notif.message}</p>
+                          <p className="text-[9px] text-blue-600 font-semibold">{new Date(notif.timestamp || Date.now()).toLocaleString('fr-FR')}</p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-slate-400 text-[10px] font-semibold text-center">Aucune nouvelle notification</div>
+                  )}
+                </div>
+              </div>
             </div>
-            <span className="hidden sm:inline text-xs font-extrabold text-slate-700">
-              {user.name?.split(" ")[0]}
-            </span>
+            <div className="flex items-center gap-4 pl-3 border-l border-slate-100">
+              <div className="w-8 h-8 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center font-bold text-xs">
+                {user.name ? user.name[0] : "E"}
+              </div>
+              <span className="hidden sm:inline text-xs font-extrabold text-slate-700">
+                {user.name?.split(" ")[0]}
+              </span>
+            </div>
           </div>
         </header>
 

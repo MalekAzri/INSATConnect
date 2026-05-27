@@ -27,31 +27,20 @@ export class WebhookService {
     date: string;
     daysLeft: number;
   }): Promise<void> {
-    if (!this.webhookUrl || !this.webhookSecret) {
-      return;
-    }
+  if (!this.webhookUrl || !this.webhookSecret) return; // ← guard existante
 
-    const body = JSON.stringify(payload);
+  const body = JSON.stringify(payload);
 
-    // Signature HMAC-SHA256 pour authentifier l'envoi
-    const signature = crypto
-      .createHmac('sha256', this.webhookSecret)
-      .update(body)
-      .digest('hex');
+  const signature = crypto
+    .createHmac('sha256', this.webhookSecret!)  // ← ajoute ! pour dire à TS "je sais qu'il est non-null ici"
+    .update(body)
+    .digest('hex');
 
-    try {
-      await axios.post(this.webhookUrl, payload, {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Webhook-Signature': `sha256=${signature}`,
-        },
-      });
-      this.logger.log(
-        `Webhook envoyé : ${payload.type} → ${payload.targetRole} (J-${payload.daysLeft})`,
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Échec du webhook : ${message}`);
-    }
-  }
+  await axios.post(this.webhookUrl, body, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Webhook-Signature': `sha256=${signature}`,
+    },
+  });
+}
 }
