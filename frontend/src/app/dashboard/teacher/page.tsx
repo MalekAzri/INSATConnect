@@ -34,7 +34,8 @@ import {
   Plus,
   SendHorizontal,
   ChevronLeft,
-  X
+  X,
+  Clock,
 } from "lucide-react";
 
 // Types
@@ -145,6 +146,12 @@ interface RealtimeNotification {
   type: string;
   message: string;
   timestamp?: string;
+  // champs supplémentaires pour les deadline_alert
+  data?: {
+    eventType?: string;
+    date?: string;
+    daysLeft?: number;
+  };
 }
 
 interface TeacherGradeRow {
@@ -285,6 +292,16 @@ const gradeStatusMeta: Record<GradeSubmissionStatus, { label: string; className:
   },
 };
 
+// Icône et couleur selon le type de notification (identique à l'admin)
+const notifMeta: Record<string, { icon: string; color: string }> = {
+  deadline_alert:     { icon: "⏰", color: "bg-orange-50 border-orange-100 text-orange-700" },
+  "grades.submitted": { icon: "📋", color: "bg-blue-50 border-blue-100 text-blue-700" },
+  message:            { icon: "💬", color: "bg-slate-50 border-slate-100 text-slate-700" },
+};
+
+const getNotifMeta = (type: string) =>
+  notifMeta[type] ?? { icon: "🔔", color: "bg-slate-50 border-slate-100 text-slate-700" };
+
 const formatDateTime = (isoDate?: string | null) => {
   if (!isoDate) return "—";
   const date = new Date(isoDate);
@@ -329,6 +346,7 @@ export default function TeacherDashboard() {
   const { user, logout } = useUser();
   const [activeTab, setActiveTab] = useState<"rooms" | "calendar" | "grades">("rooms");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastType, setToastType] = useState<"default" | "deadline">("default");
 
   // Active Room State
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
@@ -346,6 +364,7 @@ export default function TeacherDashboard() {
   const [isSubmittingGrades, setIsSubmittingGrades] = useState(false);
   const [realtimeNotifications, setRealtimeNotifications] = useState<RealtimeNotification[]>([]);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [academicEventsSummary, setAcademicEventsSummary] = useState<GraphqlAcademicEvent[]>([]);
   const [academicEventDetailsById, setAcademicEventDetailsById] = useState<Record<string, GraphqlAcademicEvent>>({});
@@ -360,8 +379,9 @@ export default function TeacherDashboard() {
     }
   }, [user.isLoggedIn, router]);
 
-  const showToast = (msg: string) => {
+  const showToast = (msg: string, type: "default" | "deadline" = "default") => {
     setToastMessage(msg);
+    setToastType(type);
     setTimeout(() => setToastMessage(null), 4000);
   };
 
@@ -376,6 +396,7 @@ export default function TeacherDashboard() {
         type: payload?.type ?? eventData?.type ?? 'message',
         message,
         timestamp: eventData?.timestamp ?? payload?.timestamp ?? new Date().toISOString(),
+        data: eventData?.data ?? undefined,
       };
     } catch {
       return null;
@@ -476,6 +497,7 @@ export default function TeacherDashboard() {
           `/admin-agent/notifications/history?role=teacher&userId=${user.id}`,
         );
         setRealtimeNotifications(history);
+        setUnreadCount(0);
       } catch {
         // ignore failures on notification history
       }
@@ -485,12 +507,24 @@ export default function TeacherDashboard() {
 
     const sseUrl = buildBackendUrl(`/admin-agent/notifications/stream?role=teacher&userId=${user.id}`);
     const source = new EventSource(sseUrl);
+
+    // Notifications génériques
     source.addEventListener("message", (event: MessageEvent) => {
       const notification = parseNotificationEvent(event);
       if (!notification) return;
       setRealtimeNotifications((prev) => [notification, ...prev].slice(0, 50));
+      setUnreadCount((prev) => prev + 1);
       showToast(notification.message);
       void loadRooms();
+    });
+
+    // Alertes échéances du checker calendar
+    source.addEventListener("deadline_alert", (event: MessageEvent) => {
+      const notification = parseNotificationEvent(event);
+      if (!notification) return;
+      setRealtimeNotifications((prev) => [notification, ...prev].slice(0, 50));
+      setUnreadCount((prev) => prev + 1);
+      showToast(`⏰ ${notification.message}`, "deadline");
     });
 
     return () => source.close();
@@ -958,10 +992,15 @@ export default function TeacherDashboard() {
   return (
     <div className="flex h-screen overflow-hidden bg-[#F9FBFC] text-slate-800">
       
-      {/* Toast */}
+      {/* Toast — orange pour deadline, slate pour le reste */}
       {toastMessage && (
-        <div className="fixed bottom-5 right-5 z-[100] flex items-center gap-2.5 rounded-2xl bg-slate-900 px-5 py-4 text-xs font-bold text-white shadow-xl animate-slideUp">
-          <Sparkles className="h-4 w-4 text-teal-400" />
+        <div className={`fixed bottom-5 right-5 z-[100] flex items-center gap-2.5 rounded-2xl px-5 py-4 text-xs font-bold text-white shadow-xl animate-slideUp ${
+          toastType === "deadline" ? "bg-orange-500" : "bg-slate-900"
+        }`}>
+          {toastType === "deadline"
+            ? <Clock className="h-4 w-4 text-white" />
+            : <Sparkles className="h-4 w-4 text-teal-400" />
+          }
           <span>{toastMessage}</span>
         </div>
       )}
@@ -1057,37 +1096,62 @@ export default function TeacherDashboard() {
             </h1>
           </div>
           <div className="flex items-center gap-4">
+            {/* Cloche notifications */}
             <div
               className="relative cursor-pointer"
-              onMouseEnter={() => setIsNotificationsOpen(true)}
+              onMouseEnter={() => { setIsNotificationsOpen(true); setUnreadCount(0); }}
               onMouseLeave={() => setIsNotificationsOpen(false)}
             >
               <div className="p-2.5 rounded-2xl hover:bg-slate-50 border border-slate-100 transition-colors flex items-center justify-center text-slate-500 relative">
                 <Bell className="h-5 w-5" />
-                <span className="ml-1 text-xs">{realtimeNotifications.length}</span>
                 {realtimeNotifications.length > 0 && (
-                  <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-orange-500 animate-ping"></span>
+                  <span className="ml-1 text-xs font-bold">{realtimeNotifications.length}</span>
+                )}
+                {/* Badge rouge si non lues */}
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full bg-orange-500 text-white text-[9px] font-black flex items-center justify-center px-1">
+                    {unreadCount}
+                  </span>
                 )}
               </div>
-              <div className={`absolute right-0 mt-3 w-80 rounded-3xl bg-white border border-slate-100 shadow-2xl p-4 z-50 ${isNotificationsOpen ? 'block' : 'hidden'}`}>
-                <h4 className="text-xs font-extrabold text-slate-800 pb-2 border-b border-slate-50">Notifications récentes</h4>
-                <div className="mt-2 space-y-2 max-h-60 overflow-y-auto">
+
+              {/* Dropdown notifications */}
+              <div className={`absolute right-0 mt-3 w-96 rounded-3xl bg-white border border-slate-100 shadow-2xl p-4 z-50 ${isNotificationsOpen ? 'block' : 'hidden'}`}>
+                <h4 className="text-xs font-extrabold text-slate-800 pb-2 border-b border-slate-100 flex items-center justify-between">
+                  Notifications récentes
+                  {realtimeNotifications.length > 0 && (
+                    <span className="text-[10px] font-bold text-slate-400">{realtimeNotifications.length} au total</span>
+                  )}
+                </h4>
+                <div className="mt-2 space-y-2 max-h-72 overflow-y-auto">
                   {realtimeNotifications.length > 0 ? (
-                    realtimeNotifications.map((notif) => (
-                      <div key={notif.id} className="p-2 bg-blue-50/50 border border-blue-100 rounded-xl flex gap-2">
-                        <Sparkles className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-[10px] font-bold text-slate-800">{notif.message}</p>
-                          <p className="text-[9px] text-blue-600 font-semibold">{new Date(notif.timestamp || Date.now()).toLocaleString('fr-FR')}</p>
+                    realtimeNotifications.map((notif) => {
+                      const meta = getNotifMeta(notif.type);
+                      return (
+                        <div key={notif.id} className={`p-2.5 border rounded-xl flex gap-2.5 ${meta.color}`}>
+                          <span className="text-sm shrink-0">{meta.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[11px] font-bold text-slate-800 leading-snug">{notif.message}</p>
+                            {/* Détail spécifique aux deadline_alert */}
+                            {notif.type === "deadline_alert" && notif.data?.daysLeft !== undefined && (
+                              <p className="text-[10px] font-semibold text-orange-600 mt-0.5">
+                                J-{notif.data.daysLeft} · {notif.data.date ? new Date(notif.data.date).toLocaleDateString("fr-FR") : ""}
+                              </p>
+                            )}
+                            <p className="text-[9px] text-slate-400 font-semibold mt-0.5">
+                              {new Date(notif.timestamp || Date.now()).toLocaleString("fr-FR")}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
-                    <div className="text-slate-400 text-[10px] font-semibold text-center">Aucune nouvelle notification</div>
+                    <div className="text-slate-400 text-[10px] font-semibold text-center py-4">Aucune nouvelle notification</div>
                   )}
                 </div>
               </div>
             </div>
+
             <div className="flex items-center gap-4 pl-3 border-l border-slate-100">
               <div className="w-8 h-8 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center font-bold text-xs">
                 {user.name ? user.name[0] : "E"}
