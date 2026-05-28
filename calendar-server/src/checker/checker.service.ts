@@ -75,7 +75,7 @@ export class CheckerService {
 
     //  Filtre notificationSent=false sauf pour les seuils intermédiaires (J-3, J-1)
     // On récupère tout et on gère la logique manuellement
-    const dates = await this.prisma.AcademicDate.findMany({
+    const dates = await this.prisma.db.academicDate.findMany({
       where: { notificationSent: false },
     });
 
@@ -147,7 +147,7 @@ export class CheckerService {
       //  Marque comme envoyé au dernier seuil (J-0)
       // Pour J-3 et J-1, on laisse notificationSent=false pour re-notifier aux seuils suivants
       if (daysLeft === 0) {
-        await this.prisma.AcademicDate.update({
+        await this.prisma.db.academicDate.update({
           where: { id: entry.id },
           data:  { notificationSent: true },
         });

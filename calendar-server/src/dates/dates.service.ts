@@ -34,7 +34,7 @@ export class DatesService {
     .filter((e): e is { key: string; date: string; targetRole: string } => !!e.date);
 
     for (const entry of entries) {
-      await this.prisma.AcademicDate.upsert({
+      await this.prisma.db.academicDate.upsert({
         where:  { key: entry.key },
         create: { ...entry, notificationSent: false },
         update: { date: entry.date, targetRole: entry.targetRole, notificationSent: false },
@@ -43,6 +43,6 @@ export class DatesService {
   }
 
   async getAllDates(): Promise<AcademicDate[]> {
-    return this.prisma.AcademicDate.findMany({ orderBy: { id: 'asc' } });
+    return this.prisma.db.academicDate.findMany({ orderBy: { id: 'asc' } });
   }
 }

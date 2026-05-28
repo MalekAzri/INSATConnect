@@ -5,6 +5,7 @@ import { DatesModule } from './dates/dates.module';
 import { CheckerModule } from './checker/checker.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { PrismaService } from './prisma/prisma.service';
 
 @Module({
   imports: [
@@ -15,5 +16,6 @@ import { PrismaModule } from './prisma/prisma.module';
     CheckerModule,
     WebhookModule,
   ],
+  providers: [PrismaService],
 })
 export class AppModule {}

@@ -1,45 +1,24 @@
-import 'dotenv/config';
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { PrismaLibSql } from '@prisma/adapter-libsql';
 
 @Injectable()
-export class PrismaService
-  extends PrismaClient
-  implements OnModuleInit, OnModuleDestroy
-{
+export class PrismaService implements OnModuleInit, OnModuleDestroy {
+  readonly db: PrismaClient;
+
   constructor() {
-    super({
-      datasources: {
-        db: {
-          url: process.env.DATABASE_URL ?? 'file:./calendar.db',
-        },
-      },
+    const adapter = new PrismaLibSql({
+      url: process.env.DATABASE_URL ?? 'file:./calendar.db',
     });
+
+    this.db = new PrismaClient({ adapter });
   }
 
   async onModuleInit(): Promise<void> {
-    await this.$connect();
-    await this.ensureSchema();
+    await this.db.$connect();
   }
 
   async onModuleDestroy(): Promise<void> {
-    await this.$disconnect();
-  }
-
-  private async ensureSchema(): Promise<void> {
-    await this.$executeRawUnsafe(
-      `CREATE TABLE IF NOT EXISTS "AcademicDate" (
-        "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-        "key" TEXT NOT NULL,
-        "date" TEXT NOT NULL,
-        "targetRole" TEXT NOT NULL,
-        "notificationSent" BOOLEAN NOT NULL DEFAULT false,
-        "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-      )`,
-    );
-
-    await this.$executeRawUnsafe(
-      'CREATE UNIQUE INDEX IF NOT EXISTS "AcademicDate_key_key" ON "AcademicDate"("key")',
-    );
+    await this.db.$disconnect();
   }
 }
