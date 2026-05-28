@@ -76,7 +76,7 @@ type Publication {
 
 type Query {
   # Liste des publications ciblées pour l'étudiant
-  publications(targetYear: String): [Publication!]!
+  publications(targetYear: String, userId: String): [Publication!]!
   publication(id: ID!): Publication
 
   # Liste allégée des documents

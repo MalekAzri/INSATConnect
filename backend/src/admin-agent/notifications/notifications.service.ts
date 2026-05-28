@@ -37,7 +37,8 @@ export class NotificationsService {
     const subscriberRole   = query.role ?? NotificationRole.ALL;
     const subscriberYear   = query.year?.trim().toUpperCase();
     const subscriberUserId = query.userId?.trim();
-
+//creer le flux de notifs
+//utiliser .matches() pour garder les notifications pertinentes pour ce subscriber (en fonction de son role, année, userId)
     const notifications$ = this.events$.pipe(
       filter((event) =>
         this.matches(event, subscriberRole, subscriberYear, subscriberUserId),
@@ -48,14 +49,14 @@ export class NotificationsService {
         data: event,
       })),
     );
-
+//pour garder la conneon SSE vivante, on envoie un heartbeat toutes les 25 secondes (certains navigateurs ferment la connexion après 30s d'inactivité)
     const heartbeat$ = interval(25_000).pipe(
       map(() => ({
         type: 'heartbeat',
         data: { timestamp: new Date().toISOString() },
       })),
     );
-
+//front reçoit les deux types d'événements : les notifications filtrées et les heartbeats pour maintenir la connexion
     return merge(notifications$, heartbeat$);
   }
 
@@ -75,7 +76,7 @@ export class NotificationsService {
         timestamp,
       },
     });
-
+//l'objet envoyé dans le flux
     const event: NotificationEventData = {
       id:           saved.id,
       type:         input.type,

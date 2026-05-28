@@ -1,13 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import {
-  IsArray,
-  IsEnum,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  MaxLength,
-  ValidateNested,
-} from 'class-validator';
+import { IsArray, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 import { PublicationCategory } from '../../common/enums/publication-category.enum';
 
 export class PublicationGradeLineDto {
@@ -60,6 +52,7 @@ export class CreatePublicationDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => PublicationGradeLineDto)
+  //si le format des notes envoyé par le front n'est pas un array d'objets PubGradelineDto, on le transforme 
   @Transform(({ value }: { value: unknown }) => {
     if (typeof value !== 'string') {
       return value;
@@ -72,4 +65,9 @@ export class CreatePublicationDto {
     }
   })
   grades?: PublicationGradeLineDto[];
+
+@IsOptional()
+@Type(() => Number)
+@IsNumber()
+targetUserId?: number;
 }

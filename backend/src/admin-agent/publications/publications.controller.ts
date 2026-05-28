@@ -24,7 +24,7 @@ const uploadsDir = join(process.cwd(), 'uploads');
 if (!existsSync(uploadsDir)) {
   mkdirSync(uploadsDir, { recursive: true });
 }
-
+// Configuration Multer pour les uploads de publications
 const publicationUploadConfig = {
   storage: diskStorage({
     destination: (_req, _file, cb) => cb(null, uploadsDir),

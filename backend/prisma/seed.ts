@@ -14,11 +14,12 @@ async function main() {
   const adminHash = await bcrypt.hash('admin123', 10);
   const studentHash = await bcrypt.hash('etudiant123', 10);
   const teacherHash = await bcrypt.hash('teacher123', 10);
+  const student2Hash = await bcrypt.hash('student456', 10);
 
-  // Create admin user (ID 1)
+  // Admin
   const admin = await prisma.user.upsert({
     where: { email: 'admin@insat.tn' },
-    update: { password: adminHash },
+    update: {},
     create: {
       id: 1,
       email: 'admin@insat.tn',
@@ -27,12 +28,13 @@ async function main() {
       role: 'administration',
     },
   });
-  console.log('Admin créé:', admin);
 
-  // Create student user (ID 2)
+  console.log('Admin OK:', admin.email);
+
+  // Student 1
   const student = await prisma.user.upsert({
     where: { email: 'etudiant@insat.tn' },
-    update: { password: studentHash },
+    update: {},
     create: {
       id: 2,
       email: 'etudiant@insat.tn',
@@ -42,12 +44,13 @@ async function main() {
       year: 'GL3',
     },
   });
-  console.log('Étudiant créé:', student);
 
-  // Create teacher user (ID 3)
+  console.log('Étudiant 1 OK:', student.email);
+
+  // Teacher
   const teacher = await prisma.user.upsert({
     where: { email: 'm.slim@insat.u-cartago.tn' },
-    update: { password: teacherHash },
+    update: {},
     create: {
       id: 3,
       email: 'm.slim@insat.u-cartago.tn',
@@ -56,7 +59,24 @@ async function main() {
       role: 'teacher',
     },
   });
-  console.log('Enseignant créé:', teacher);
+
+  console.log('Enseignant OK:', teacher.email);
+
+  // Student 2
+  const student2 = await prisma.user.upsert({
+    where: { email: 'sarra@insat.tn' },
+    update: {},
+    create: {
+      id: 4,
+      email: 'sarra@insat.tn',
+      password: student2Hash,
+      name: 'Sarra',
+      role: 'etudiant',
+      year: 'RT2',
+    },
+  });
+
+  console.log('Étudiant 2 OK:', student2.email);
 }
 
 main()

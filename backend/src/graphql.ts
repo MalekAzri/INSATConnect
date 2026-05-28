@@ -56,6 +56,7 @@ export class AdminPublication {
     filePath?: Nullable<string>;
     fileSizeBytes?: Nullable<number>;
     createdAt: string;
+    targetUserId?: Nullable<number>;
 }
 
 export class AdminGradeEntry {
@@ -95,7 +96,7 @@ export abstract class IQuery {
 
     abstract adminGradeSubmission(id: string): Nullable<AdminGradeSubmission> | Promise<Nullable<AdminGradeSubmission>>;
 
-    abstract publications(targetYear?: Nullable<string>): Publication[] | Promise<Publication[]>;
+    abstract publications(targetYear?: Nullable<string>, userId?: Nullable<string>): Publication[] | Promise<Publication[]>;
 
     abstract publication(id: string): Nullable<Publication> | Promise<Nullable<Publication>>;
 

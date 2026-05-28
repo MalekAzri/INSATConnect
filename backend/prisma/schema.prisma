@@ -49,6 +49,7 @@ model Publication {
   grades        String?    // Stores serialized array of PublicationGradeLine
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  targetUserId  Int?  
 }
 
 model AcademicCalendarConfig {

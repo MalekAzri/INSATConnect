@@ -1,7 +1,6 @@
-// 2.5 Publications pour le feed étudiant
 export const GET_PUBLICATIONS = `
-  query GetPublications($targetYear: String) {
-    publications(targetYear: $targetYear) {
+  query GetPublications($targetYear: String, $userId: String) {
+    publications(targetYear: $targetYear, userId: $userId) {
       id
       titre
       categorie
@@ -63,6 +62,7 @@ export const GET_ADMIN_PUBLICATIONS = `
       filePath
       fileSizeBytes
       createdAt
+      targetUserId
     }
   }
 `;

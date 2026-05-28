@@ -267,16 +267,17 @@ export default function StudentDashboard() {
   }, [user.year]);
 
   const loadFeed = useCallback(() => {
-    backendGraphQLFetchJson<{ publications: GraphqlPublication[] }>(GET_PUBLICATIONS, {
-      targetYear: user.year || "GL3",
+  backendGraphQLFetchJson<{ publications: GraphqlPublication[] }>(GET_PUBLICATIONS, {
+    targetYear: user.year || "GL3",
+    userId: user.id ? String(user.id) : undefined,  // ← ajouter
+  })
+    .then(data => {
+      setAllFeedPosts(Array.isArray(data?.publications) ? data.publications.map(toStudentPostFromGraphql) : []);
     })
-      .then(data => {
-        setAllFeedPosts(Array.isArray(data?.publications) ? data.publications.map(toStudentPostFromGraphql) : []);
-      })
-      .catch((error) => {
-        console.error("Failed to load student publications feed", error);
-      });
-  }, [user.year]);
+    .catch((error) => {
+      console.error("Failed to load student publications feed", error);
+    });
+}, [user.year, user.id]); 
 
   useEffect(() => {
     loadFeed();
@@ -344,8 +345,7 @@ export default function StudentDashboard() {
 
   useEffect(() => {
     // 1. Fetch initial history from DB
-    backendFetchJson<RealtimeNotification[]>(`/student-agent/notifications/history?role=student&year=${user.year || "GL3"}`)
-      .then(history => {
+        backendFetchJson<RealtimeNotification[]>(`/student-agent/notifications/history?role=student&year=${user.year || "GL3"}${user.id ? `&userId=${user.id}` : ""}`)      .then(history => {
         if (Array.isArray(history)) {
           setRealtimeNotifications(history);
         }
@@ -353,7 +353,7 @@ export default function StudentDashboard() {
       .catch(console.error);
 
     // 2. Subscribe to real-time events via SSE
-    const sseUrl = buildBackendUrl(`/student-agent/notifications/stream?role=student&year=${user.year || "GL3"}`);
+    const sseUrl = buildBackendUrl(`/student-agent/notifications/stream?role=student&year=${user.year || "GL3"}${user.id ? `&userId=${user.id}` : ""}`);
     const source = new EventSource(sseUrl);
 
     const handleSseEvent = (event: MessageEvent) => {
@@ -701,7 +701,7 @@ export default function StudentDashboard() {
                 : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
             }`}
           >
-            <BookOpen className="h-4.5 w-4.5" />
+            <BookOpen className="h-4.é5 w-4.5" />
             <span>Rooms (Salles de cours)</span>
             <span className="ml-auto bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-[9px] font-bold">
               {activeRooms.length}
@@ -769,11 +769,15 @@ export default function StudentDashboard() {
               onMouseLeave={() => setIsNotificationsOpen(false)}
             >
               <div className="p-2.5 rounded-2xl hover:bg-slate-50 border border-slate-100 transition-colors flex items-center justify-center text-slate-500 relative">
-                <Bell className="h-5 w-5" />
-                <span className="ml-1 text-xs">{realtimeNotifications.length}</span>
-                {(unsubmittedHomeworks.length > 0 || realtimeNotifications.length > 0) && (
-                  <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-orange-500 animate-ping"></span>
-                )}
+             <Bell className="h-5 w-5" />
+{(realtimeNotifications.length + unsubmittedHomeworks.length) > 0 && (
+  <>
+    <span className="ml-1 text-xs">
+      {realtimeNotifications.length + unsubmittedHomeworks.length}
+    </span>
+    <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-orange-500 animate-ping"></span>
+  </>
+)}
               </div>
               
               {/* Dropdown notification card */}

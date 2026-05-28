@@ -9,6 +9,8 @@ type AdminPublication {
   filePath: String
   fileSizeBytes: Int
   createdAt: String!
+  targetUserId: Int
+
 }
 
 type AdminGradeEntry {

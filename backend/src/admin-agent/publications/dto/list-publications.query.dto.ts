@@ -37,4 +37,8 @@ export class ListPublicationsQueryDto {
   @Min(1)
   @Max(100)
   limit?: number = 50;
+  
+  @IsOptional()
+  @IsString()
+  userId?: string;
 }

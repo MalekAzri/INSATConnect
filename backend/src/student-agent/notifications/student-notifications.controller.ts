@@ -10,13 +10,13 @@ export class StudentNotificationsController {
 
   @Sse('stream')
   stream(
-    @Query() query: SubscribeNotificationsQueryDto,
-  ): Observable<MessageEvent> {
-    return this.notificationsService.stream(query);
+    @Query() query: SubscribeNotificationsQueryDto,//role, year, userId arrivés du front pour filtrer les notifications en fonction de l'étudiant connecté
+  ): Observable<MessageEvent> {//retourne un flux sse pour notifier le front de l'etudiant qui s'est inscrit
+    return this.notificationsService.stream(query);//s'inscrire au flux 
   }
 
   @Get('history')
   async getHistory(@Query() query: SubscribeNotificationsQueryDto) {
-    return this.notificationsService.getHistory(NotificationRole.STUDENT, query.year);
+    return this.notificationsService.getHistory(NotificationRole.STUDENT, query.year, query.userId);
   }
 }

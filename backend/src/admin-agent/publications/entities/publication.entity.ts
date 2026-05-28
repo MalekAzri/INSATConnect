@@ -21,4 +21,5 @@ export class Publication {
   grades?: PublicationGradeLine[] | null;
   createdAt!: Date;
   updatedAt!: Date;
+  targetUserId?: number | null;
 }

@@ -21,7 +21,7 @@ export class PublicationsService {
     if (normalized === 'TOUS' || normalized === 'ALL' || normalized === '*') {
       return null;
     }
-    return normalized;
+    return normalized;//retourne l'année cibelée normalisée ou null si c'est pour tous les étudiants
   }
 
   private mapToEntity(pub: any): Publication {
@@ -34,6 +34,7 @@ export class PublicationsService {
       targetYear: pub.targetYear,
       fileName: pub.fileName,
       filePath: pub.filePath,
+      targetUserId: pub.targetUserId ?? null,
       fileSizeBytes: pub.fileSizeBytes,
       grades: pub.grades ? JSON.parse(pub.grades) : null,
       createdAt: pub.createdAt,
@@ -55,10 +56,11 @@ export class PublicationsService {
       fileName: file?.originalname ?? null,
       filePath: file ? `/uploads/${file.filename}` : null,
       fileSizeBytes: file?.size ?? null,
-      grades: dto.grades?.length ? JSON.stringify(dto.grades) : null,
+      targetUserId: dto.targetUserId ?? null,
+      grades: dto.grades?.length ? JSON.stringify(dto.grades) : null,//mapToEntity à la lecture pour convertir en array, et ici on stringify pour stocker en string dans la BDD sqlite 
     },
   });
-
+// nettoyer le contenu stocké par prisma ( publication ) pour notifier les etudiants proprement par la publication ( grades: string ==> array, category: string ==> enum, etc.. ) 
   const saved = this.mapToEntity(publication);
 
   await this.notificationsService.publish({
@@ -66,62 +68,74 @@ export class PublicationsService {
     role: NotificationRole.STUDENT, 
     message: `Nouvelle publication: ${saved.title}`,
     targetYear: saved.targetYear,
+    targetUserId: saved.targetUserId != null ? String(saved.targetUserId) : undefined,  // ← ici
     data: {
       publicationId: saved.id,
       category: saved.category,
-      targetYear: saved.targetYear,
     },
   });
 
   return saved;
 }
 
-  async findAll(query: ListPublicationsQueryDto): Promise<Publication[]> {
-    const where: any = {};
+ async findAll(query: ListPublicationsQueryDto): Promise<Publication[]> {
+  const where: any = {};
 
-    if (query.category) {
-      where.category = query.category;
-    }
-
-    if (query.targetYear) {
-      const normalizedTarget = this.normalizeTargetYear(query.targetYear);
-      where.OR = [
-        { targetYear: null },
-        { targetYear: { in: ['TOUS', 'ALL', '*'] } },
-        ...(normalizedTarget ? [{ targetYear: { equals: normalizedTarget } }] : []),
-      ];
-    }
-
-    if (query.search) {
-      const search = query.search.trim();
-      where.AND = [
-        ...(where.AND || []),
-        {
-          OR: [
-            { title: { contains: search } },
-            { content: { contains: search } },
-          ],
-        },
-      ];
-    }
-
-    let pubs: any[] = [];
-    try {
-      pubs = await this.prisma.publication.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip: query.offset ? Number(query.offset) : 0,
-        take: query.limit ? Number(query.limit) : 50,
-      });
-    } catch (error) {
-      if (this.isMissingTableError(error, 'Publication')) {
-        return [];
-      }
-      throw error;
-    }
-
-    return pubs.map((p) => this.mapToEntity(p));
+  if (query.category) {
+    where.category = query.category;
   }
+
+  if (query.targetYear) {
+    const normalizedTarget = this.normalizeTargetYear(query.targetYear);
+    where.OR = [
+      { targetYear: null },
+      { targetYear: { in: ['TOUS', 'ALL', '*'] } },
+      ...(normalizedTarget ? [{ targetYear: { equals: normalizedTarget } }] : []),
+    ];
+  }
+
+  if (query.search) {
+    const search = query.search.trim();
+    where.AND = [
+      ...(where.AND ?? []),
+      {
+        OR: [
+          { title: { contains: search } },
+          { content: { contains: search } },
+        ],
+      },
+    ];
+  }
+
+  if (query.userId) {
+    where.AND = [
+      ...(where.AND ?? []),
+      { OR: [{ targetUserId: null }, { targetUserId: Number(query.userId) }] },
+    ];
+  } else {
+    where.AND = [
+      ...(where.AND ?? []),
+      { targetUserId: null },
+    ];
+  }
+
+  let pubs: any[] = [];
+  try {
+    pubs = await this.prisma.publication.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: query.offset ? Number(query.offset) : 0,
+      take: query.limit ? Number(query.limit) : 50,
+    });
+  } catch (error) {
+    if (this.isMissingTableError(error, 'Publication')) {
+      return [];
+    }
+    throw error;
+  }
+
+  return pubs.map((p) => this.mapToEntity(p));
+}
 
   async findOne(id: string): Promise<Publication> {
     const publication = await this.prisma.publication.findUnique({ where: { id } });

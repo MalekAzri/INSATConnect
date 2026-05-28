@@ -31,7 +31,7 @@ import {
   Inbox,
   Search,
   Circle,
-  Clock, // ← icône pour deadline_alert
+  Clock,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -54,7 +54,6 @@ interface RealtimeNotification {
   type: string;
   message: string;
   timestamp?: string;
-  // champs supplémentaires pour les deadline_alert
   data?: {
     eventType?: string;
     date?: string;
@@ -69,6 +68,7 @@ interface BackendPublication {
   content: string;
   author: string;
   targetYear?: string | null;
+  targetUserId?: number | null;  // ← ajouter
   fileName?: string | null;
   filePath?: string | null;
   fileSizeBytes?: number | null;
@@ -153,7 +153,6 @@ const gradeStatusMeta: Record<
   },
 };
 
-// Icône et couleur selon le type de notification
 const notifMeta: Record<string, { icon: string; color: string }> = {
   deadline_alert: {
     icon: "⏰",
@@ -198,7 +197,9 @@ const toPost = (publication: BackendPublication): Post => ({
   content: publication.content,
   date: formatPostDate(publication.createdAt),
   author: publication.author,
-  targetYear: publication.targetYear ?? "Tous",
+  targetYear: publication.targetUserId
+  ? `Étudiant #${publication.targetUserId}`
+  : (publication.targetYear ?? "Tous"),
   fileName: publication.fileName ?? undefined,
   fileSize: formatFileSize(publication.fileSizeBytes),
   fileUrl: publication.filePath
@@ -257,21 +258,21 @@ const toCalendarPayload = (calConfig: Record<string, string>) => ({
 });
 
 const fromBackendCalendar = (config: BackendCalendarConfig) => ({
-  s1_ds: config.s1_ds,
-  s1_exam: config.s1_exam,
-  s1_grades_ds: config.s1_grades_ds,
-  s1_publish_ds: config.s1_publish_ds,
-  s1_grades_exam: config.s1_grades_exam,
-  s1_publish_exam: config.s1_publish_exam,
-  s1_delib: config.s1_delib,
-  s2_ds: config.s2_ds,
-  s2_exam: config.s2_exam,
-  s2_grades_ds: config.s2_grades_ds,
-  s2_publish_ds: config.s2_publish_ds,
-  s2_grades_exam: config.s2_grades_exam,
-  s2_publish_exam: config.s2_publish_exam,
-  s2_delib: config.s2_delib,
-  end_year: config.end_year,
+  s1_ds:           config.s1_ds           ?? "",
+  s1_exam:         config.s1_exam         ?? "",
+  s1_grades_ds:    config.s1_grades_ds    ?? "",
+  s1_publish_ds:   config.s1_publish_ds   ?? "",
+  s1_grades_exam:  config.s1_grades_exam  ?? "",
+  s1_publish_exam: config.s1_publish_exam ?? "",
+  s1_delib:        config.s1_delib        ?? "",
+  s2_ds:           config.s2_ds           ?? "",
+  s2_exam:         config.s2_exam         ?? "",
+  s2_grades_ds:    config.s2_grades_ds    ?? "",
+  s2_publish_ds:   config.s2_publish_ds   ?? "",
+  s2_grades_exam:  config.s2_grades_exam  ?? "",
+  s2_publish_exam: config.s2_publish_exam ?? "",
+  s2_delib:        config.s2_delib        ?? "",
+  end_year:        config.end_year        ?? "",
 });
 
 // ─── Composant principal ───────────────────────────────────────────────────────
@@ -380,6 +381,8 @@ export default function AdminDashboard() {
     "urgent" | "document" | "planning"
   >("planning");
   const [newPostTarget, setNewPostTarget] = useState("Tous");
+  // ── CHANGEMENT 1 : state pour l'ID d'un étudiant précis ──────────────────────
+  const [newPostTargetUserId, setNewPostTargetUserId] = useState("");
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -398,8 +401,15 @@ export default function AdminDashboard() {
       formData.append("category", newPostCategory);
       formData.append("content", newPostContent.trim());
       formData.append("author", user.name || "Scolarité INSAT");
-      if (newPostTarget && newPostTarget !== "Tous")
+
+      // ── CHANGEMENT 3 : logique d'envoi du bon champ ────────────────────────
+      if (newPostTarget === "__user__") {
+        if (newPostTargetUserId.trim())
+          formData.append("targetUserId", newPostTargetUserId.trim());
+      } else if (newPostTarget !== "Tous") {
         formData.append("targetYear", newPostTarget.trim().toUpperCase());
+      }
+
       if (attachedFile) formData.append("file", attachedFile);
 
       const response = await fetch(
@@ -417,6 +427,7 @@ export default function AdminDashboard() {
 
       setNewPostTitle("");
       setNewPostContent("");
+      setNewPostTargetUserId("");
       setAttachedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       showToast("Publication envoyée !");
@@ -640,7 +651,6 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (!user.isLoggedIn) return;
 
-    // Charger l'historique
     const loadHistory = async () => {
       try {
         const history = await backendFetchJson<RealtimeNotification[]>(
@@ -658,7 +668,6 @@ export default function AdminDashboard() {
       buildBackendUrl("/admin-agent/notifications/stream?role=admin"),
     );
 
-    //  Notifications génériques (publications, annonces)
     es.addEventListener("message", (event: MessageEvent) => {
       const notification = parseNotificationEvent(event);
       if (!notification) return;
@@ -666,7 +675,6 @@ export default function AdminDashboard() {
       showToast(notification.message);
     });
 
-    //  Soumissions de notes par les profs
     es.addEventListener("grades.submitted", (event: MessageEvent) => {
       const notification = parseNotificationEvent(event);
       if (!notification) return;
@@ -674,7 +682,6 @@ export default function AdminDashboard() {
       showToast(`📋 ${notification.message}`);
     });
 
-    // NOUVEAU — Alertes échéances du checker calendar
     es.addEventListener("deadline_alert", (event: MessageEvent) => {
       const notification = parseNotificationEvent(event);
       if (!notification) return;
@@ -683,7 +690,7 @@ export default function AdminDashboard() {
     });
 
     es.onerror = () => {
-      // silencieux pour éviter les toasts intempestifs
+      // silencieux
     };
 
     return () => es.close();
@@ -937,7 +944,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#F9FBFC] text-slate-800">
-      {/* Toast — orange pour deadline, slate pour le reste */}
+      {/* Toast */}
       {toastMessage && (
         <div
           className={`fixed bottom-5 right-5 z-[100] flex items-center gap-2.5 rounded-2xl px-5 py-4 text-xs font-bold text-white shadow-xl animate-slideUp ${
@@ -1122,7 +1129,6 @@ export default function AdminDashboard() {
                     {realtimeNotifications.length}
                   </span>
                 )}
-                {/* Badge rouge si non lues */}
                 {unreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full bg-orange-500 text-white text-[9px] font-black flex items-center justify-center px-1">
                     {unreadCount}
@@ -1156,7 +1162,6 @@ export default function AdminDashboard() {
                             <p className="text-[11px] font-bold text-slate-800 leading-snug">
                               {notif.message}
                             </p>
-                            {/* Détail spécifique aux deadline_alert */}
                             {notif.type === "deadline_alert" &&
                               notif.data?.daysLeft !== undefined && (
                                 <p className="text-[10px] font-semibold text-orange-600 mt-0.5">
@@ -1236,13 +1241,18 @@ export default function AdminDashboard() {
                         <option value="document">Document Administratif</option>
                       </select>
                     </div>
+
+                    {/* ── CHANGEMENT 2 : select ciblage + input conditionnel ── */}
                     <div className="w-1/2">
                       <label className="text-xs font-bold text-slate-500 mb-1 block">
                         Ciblage (Classes)
                       </label>
                       <select
                         value={newPostTarget}
-                        onChange={(e) => setNewPostTarget(e.target.value)}
+                        onChange={(e) => {
+                          setNewPostTarget(e.target.value);
+                          setNewPostTargetUserId(""); // reset si on change de mode
+                        }}
                         className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold text-slate-700 focus:outline-none focus:border-pink-300"
                       >
                         <option value="Tous">Tous les étudiants</option>
@@ -1251,7 +1261,21 @@ export default function AdminDashboard() {
                         <option value="IIA">IIA</option>
                         <option value="IMI">IMI</option>
                         <option value="RT">RT</option>
+                        <option value="__user__">Un étudiant précis</option>
                       </select>
+
+                      {/* Apparaît uniquement si "Un étudiant précis" est choisi */}
+                      {newPostTarget === "__user__" && (
+                        <input
+                          type="text"
+                          placeholder="ID de l'étudiant (ex: 42)"
+                          value={newPostTargetUserId}
+                          onChange={(e) =>
+                            setNewPostTargetUserId(e.target.value)
+                          }
+                          className="mt-2 w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-pink-300"
+                        />
+                      )}
                     </div>
                   </div>
                   <div className="mb-4">

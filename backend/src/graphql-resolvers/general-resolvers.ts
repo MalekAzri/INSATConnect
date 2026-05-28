@@ -281,7 +281,7 @@ export const createApolloResolvers = (
 
     publications: async (
       _parent: unknown,
-      args: { targetYear?: string },
+      args: { targetYear?: string, userId?: string },
       context?: GraphqlContext,
     ) => {
       const year = normalizeTargetYear(
@@ -297,6 +297,18 @@ export const createApolloResolvers = (
         ];
       }
 
+      if (args.userId) {
+        where.AND = [
+          ...(where.AND ?? []),
+          { OR: [{ targetUserId: null }, { targetUserId: Number(args.userId) }] },
+        ];
+      } else {
+        where.AND = [
+          ...(where.AND ?? []),
+          { targetUserId: null },
+        ];
+      }
+      
       const pubs = await prisma.publication.findMany({
         where,
         orderBy: { createdAt: 'desc' },

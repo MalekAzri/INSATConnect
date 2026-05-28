@@ -1432,6 +1432,16 @@ export default function TeacherDashboard() {
                       </div>
                       {expandedHomeworkId === hw.id && (
                         <div className="ml-2 mt-3 rounded-2xl border border-slate-100 bg-slate-50 p-3 space-y-2">
+                           {/* En-tête avec bouton fermer */}
+                            <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-200">
+                              <span className="text-xs font-bold text-slate-600">Soumissions des étudiants</span>
+                              <button
+                                onClick={() => setExpandedHomeworkId(null)}
+                                className="text-slate-400 hover:text-slate-600 transition-colors"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
                           {loadingHomeworkSubmissionsId === hw.id ? (
                             <p className="text-xs text-slate-500 font-semibold">Chargement des soumissions...</p>
                           ) : (homeworkSubmissionsById[hw.id] ?? []).length === 0 ? (
