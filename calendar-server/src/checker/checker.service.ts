@@ -18,27 +18,12 @@ export enum UserRole {
   ADMIN    = 'ADMIN',
 }
 
-const ROLE_EVENT_PERMISSIONS: Record<UserRole, AcademicEventKey[]> = {
-  [UserRole.ETUDIANT]: [
-    AcademicEventKey.AFFICHAGE,
-    AcademicEventKey.DS,
-    AcademicEventKey.EXAMEN,
-    AcademicEventKey.DELIB,
-  ],
-  [UserRole.PROF]: [
-    AcademicEventKey.AFFICHAGE,
-    AcademicEventKey.DS,
-    AcademicEventKey.EXAMEN,
-    AcademicEventKey.DELIB,
-    AcademicEventKey.REMISE_NOTES,
-  ],
-  [UserRole.ADMIN]: [
-    AcademicEventKey.AFFICHAGE,
-    AcademicEventKey.DS,
-    AcademicEventKey.EXAMEN,
-    AcademicEventKey.DELIB,
-    AcademicEventKey.REMISE_NOTES,
-  ],
+const EVENT_TARGET_ROLES: Record<AcademicEventKey, UserRole[]> = {
+  [AcademicEventKey.DS]:           [UserRole.ETUDIANT, UserRole.PROF, UserRole.ADMIN],
+  [AcademicEventKey.EXAMEN]:       [UserRole.ETUDIANT, UserRole.PROF, UserRole.ADMIN],
+  [AcademicEventKey.AFFICHAGE]:    [UserRole.ETUDIANT, UserRole.PROF, UserRole.ADMIN],
+  [AcademicEventKey.DELIB]:        [UserRole.ETUDIANT, UserRole.PROF, UserRole.ADMIN],
+  [AcademicEventKey.REMISE_NOTES]: [UserRole.PROF, UserRole.ADMIN],
 };
 
 //  Mapping complet clés DB → AcademicEventKey
@@ -127,7 +112,7 @@ export class CheckerService {
         continue;
       }
 
-      const targetRoles = this.resolveTargetRoles(eventKey);
+      const targetRoles = EVENT_TARGET_ROLES[eventKey] ?? [];
       if (targetRoles.length === 0) {
         this.logger.warn(`Aucun rôle cible pour : ${entry.key} (${eventKey})`);
         continue;
@@ -173,11 +158,5 @@ export class CheckerService {
     this.logger.log('Vérification terminée');
   }
 
-  private resolveTargetRoles(eventKey: AcademicEventKey): UserRole[] {
-    return (
-      Object.entries(ROLE_EVENT_PERMISSIONS) as [UserRole, AcademicEventKey[]][]
-    )
-      .filter(([, allowedKeys]) => allowedKeys.includes(eventKey))
-      .map(([role]) => role);
-  }
+
 }
