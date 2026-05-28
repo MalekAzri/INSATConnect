@@ -17,13 +17,6 @@ CREATE TABLE IF NOT EXISTS "Publication" (
 -- CreateTable
 CREATE TABLE IF NOT EXISTS "AcademicCalendarConfig" (
     "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-    "dsRemise" TEXT NOT NULL,
-    "examRemise" TEXT NOT NULL,
-    "dsAffichage" TEXT NOT NULL,
-    "examAffichage" TEXT NOT NULL,
-    "sem1Deliberation" TEXT NOT NULL,
-    "sem2Deliberation" TEXT NOT NULL,
-    "deliberationFinale" TEXT NOT NULL,
     "s1_ds" TEXT,
     "s1_exam" TEXT,
     "s1_grades_ds" TEXT,

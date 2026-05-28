@@ -8,33 +8,6 @@ import {
 } from 'class-validator';
 
 export class UpsertAcademicCalendarDto {
-  @IsDateString()
-  @IsNotEmpty()
-  dsRemise!: string;
-
-  @IsDateString()
-  @IsNotEmpty()
-  examRemise!: string;
-
-  @IsDateString()
-  @IsNotEmpty()
-  dsAffichage!: string;
-
-  @IsDateString()
-  @IsNotEmpty()
-  examAffichage!: string;
-
-  @IsDateString()
-  @IsNotEmpty()
-  sem1Deliberation!: string;
-
-  @IsDateString()
-  @IsNotEmpty()
-  sem2Deliberation!: string;
-
-  @IsDateString()
-  @IsNotEmpty()
-  deliberationFinale!: string;
 
   @IsOptional()
   @IsDateString()

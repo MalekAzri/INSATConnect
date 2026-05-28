@@ -43,14 +43,7 @@ const ROLE_EVENT_PERMISSIONS: Record<UserRole, AcademicEventKey[]> = {
 
 //  Mapping complet clés DB → AcademicEventKey
 const DB_KEY_TO_EVENT: Record<string, AcademicEventKey> = {
-  // Legacy
-  ds_remise:           AcademicEventKey.REMISE_NOTES,
-  exam_remise:         AcademicEventKey.REMISE_NOTES,
-  ds_affichage:        AcademicEventKey.AFFICHAGE,
-  exam_affichage:      AcademicEventKey.AFFICHAGE,
-  sem1_deliberation:   AcademicEventKey.DELIB,
-  sem2_deliberation:   AcademicEventKey.DELIB,
-  final_deliberation:  AcademicEventKey.DELIB,
+
   // Semestre 1
   s1_ds:               AcademicEventKey.DS,
   s1_exam:             AcademicEventKey.EXAMEN,
@@ -83,7 +76,7 @@ export class CheckerService {
     private readonly config: ConfigService,
   ) {}
 
-  @Cron('0 6 * * *') // 6h UTC = 7h Tunis ( remarque, ajuster à ***** pour tester que le serveur externe marche bel et bien lors de la validation)
+  @Cron('0 6 * * *') // 6h UTC = 7h Tunis 
   async checkDeadlines(): Promise<void> {
     this.logger.log('Vérification des échéances...');
 
@@ -97,7 +90,7 @@ export class CheckerService {
 
     //  Filtre notificationSent=false sauf pour les seuils intermédiaires (J-3, J-1)
     // On récupère tout et on gère la logique manuellement
-    const dates = await this.prisma.academicDate.findMany({
+    const dates = await this.prisma.AcademicDate.findMany({
       where: { notificationSent: false },
     });
 
@@ -169,7 +162,7 @@ export class CheckerService {
       //  Marque comme envoyé au dernier seuil (J-0)
       // Pour J-3 et J-1, on laisse notificationSent=false pour re-notifier aux seuils suivants
       if (daysLeft === 0) {
-        await this.prisma.academicDate.update({
+        await this.prisma.AcademicDate.update({
           where: { id: entry.id },
           data:  { notificationSent: true },
         });

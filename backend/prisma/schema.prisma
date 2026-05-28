@@ -53,13 +53,6 @@ model Publication {
 
 model AcademicCalendarConfig {
   id                 Int      @id @default(autoincrement())
-  dsRemise           String
-  examRemise         String
-  dsAffichage        String
-  examAffichage      String
-  sem1Deliberation   String
-  sem2Deliberation   String
-  deliberationFinale String
   s1_ds              String?
   s1_exam            String?
   s1_grades_ds       String?

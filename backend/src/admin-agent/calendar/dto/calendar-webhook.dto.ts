@@ -3,14 +3,7 @@ import { IsIn, IsInt, IsString, Min } from 'class-validator';
 export class CalendarWebhookDto {
   @IsString()
   @IsIn([
-    // ── Legacy ────────────────────────────────
-    'ds_remise',
-    'exam_remise',
-    'ds_affichage',
-    'exam_affichage',
-    'sem1_deliberation',
-    'sem2_deliberation',
-    'final_deliberation',
+
     // ── Semestre 1 ────────────────────────────
     's1_ds',
     's1_exam',

@@ -39,13 +39,6 @@ export class CalendarService {
     let saved: AcademicCalendarConfig;
 
     const data = {
-      dsRemise: dto.dsRemise,
-      examRemise: dto.examRemise,
-      dsAffichage: dto.dsAffichage,
-      examAffichage: dto.examAffichage,
-      sem1Deliberation: dto.sem1Deliberation,
-      sem2Deliberation: dto.sem2Deliberation,
-      deliberationFinale: dto.deliberationFinale,
       s1_ds: dto.s1_ds ?? null,
       s1_exam: dto.s1_exam ?? null,
       s1_grades_ds: dto.s1_grades_ds ?? null,

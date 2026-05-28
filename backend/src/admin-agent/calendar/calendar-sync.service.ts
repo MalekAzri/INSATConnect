@@ -16,14 +16,6 @@ export class CalendarSyncService {
     await axios.post(
       url,
       {
-        dsRemise: config.dsRemise,
-        examRemise: config.examRemise,
-        dsAffichage: config.dsAffichage,
-        examAffichage: config.examAffichage,
-        sem1Deliberation: config.sem1Deliberation,
-        sem2Deliberation: config.sem2Deliberation,
-        deliberationFinale: config.deliberationFinale,
-        DeliberationFinale: config.deliberationFinale,
         s1_ds: config.s1_ds,
         s1_exam: config.s1_exam,
         s1_grades_ds: config.s1_grades_ds,

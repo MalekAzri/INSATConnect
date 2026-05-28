@@ -12,11 +12,11 @@ export class DatesService {
       // ── Semestre 1 ────────────────────────────────────────────────────────
       { key: 's1_ds',             date: dto.s1_ds,                              targetRole: 'admin' },
       { key: 's1_exam',           date: dto.s1_exam,                            targetRole: 'admin' },
-      { key: 'ds_remise',         date: dto.s1_grades_ds   ?? dto.dsRemise,     targetRole: 'professeur' },
-      { key: 'ds_affichage',      date: dto.s1_publish_ds  ?? dto.dsAffichage,  targetRole: 'admin' },
-      { key: 'exam_remise',       date: dto.s1_grades_exam ?? dto.examRemise,   targetRole: 'professeur' },
-      { key: 'exam_affichage',    date: dto.s1_publish_exam?? dto.examAffichage,targetRole: 'admin' },
-      { key: 'sem1_deliberation', date: dto.s1_delib       ?? dto.sem1Deliberation, targetRole: 'admin' },
+      { key: 'ds_remise',         date: dto.s1_grades_ds   ,     targetRole: 'professeur' },
+      { key: 'ds_affichage',      date: dto.s1_publish_ds  ,  targetRole: 'admin' },
+      { key: 'exam_remise',       date: dto.s1_grades_exam ,   targetRole: 'professeur' },
+      { key: 'exam_affichage',    date: dto.s1_publish_exam,targetRole: 'admin' },
+      { key: 'sem1_deliberation', date: dto.s1_delib       , targetRole: 'admin' },
 
       // ── Semestre 2 ────────────────────────────────────────────────────────
       { key: 's2_ds',             date: dto.s2_ds,          targetRole: 'admin' },
@@ -25,16 +25,16 @@ export class DatesService {
       { key: 's2_publish_ds',     date: dto.s2_publish_ds,  targetRole: 'admin' },
       { key: 's2_grades_exam',    date: dto.s2_grades_exam, targetRole: 'professeur' },
       { key: 's2_publish_exam',   date: dto.s2_publish_exam,targetRole: 'admin' },
-      { key: 'sem2_deliberation', date: dto.s2_delib ?? dto.sem2Deliberation,   targetRole: 'admin' },
+      { key: 'sem2_deliberation', date: dto.s2_delib ,   targetRole: 'admin' },
 
       // ── Fin d'année ───────────────────────────────────────────────────────
-      { key: 'final_deliberation', date: dto.end_year ?? dto.DeliberationFinale, targetRole: 'admin' },
+      { key: 'final_deliberation', date: dto.end_year , targetRole: 'admin' },
     ]
-    // ✅ filtre ET cast — TypeScript sait que date est string après le filtre
+    //  filtre ET cast — TypeScript sait que date est string après le filtre
     .filter((e): e is { key: string; date: string; targetRole: string } => !!e.date);
 
     for (const entry of entries) {
-      await this.prisma.academicDate.upsert({
+      await this.prisma.AcademicDate.upsert({
         where:  { key: entry.key },
         create: { ...entry, notificationSent: false },
         update: { date: entry.date, targetRole: entry.targetRole, notificationSent: false },
@@ -43,6 +43,6 @@ export class DatesService {
   }
 
   async getAllDates(): Promise<AcademicDate[]> {
-    return this.prisma.academicDate.findMany({ orderBy: { id: 'asc' } });
+    return this.prisma.AcademicDate.findMany({ orderBy: { id: 'asc' } });
   }
 }

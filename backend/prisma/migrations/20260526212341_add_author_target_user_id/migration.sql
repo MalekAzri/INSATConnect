@@ -39,13 +39,6 @@ PRAGMA defer_foreign_keys=ON;
 PRAGMA foreign_keys=OFF;
 CREATE TABLE "new_AcademicCalendarConfig" (
     "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-    "dsRemise" TEXT NOT NULL,
-    "examRemise" TEXT NOT NULL,
-    "dsAffichage" TEXT NOT NULL,
-    "examAffichage" TEXT NOT NULL,
-    "sem1Deliberation" TEXT NOT NULL,
-    "sem2Deliberation" TEXT NOT NULL,
-    "deliberationFinale" TEXT NOT NULL,
     "s1_ds" TEXT,
     "s1_exam" TEXT,
     "s1_grades_ds" TEXT,
@@ -65,7 +58,7 @@ CREATE TABLE "new_AcademicCalendarConfig" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL
 );
-INSERT INTO "new_AcademicCalendarConfig" ("createdAt", "deliberationFinale", "dsAffichage", "dsRemise", "end_year", "examAffichage", "examRemise", "id", "s1_delib", "s1_ds", "s1_exam", "s1_grades_ds", "s1_grades_exam", "s1_publish_ds", "s1_publish_exam", "s2_delib", "s2_ds", "s2_exam", "s2_grades_ds", "s2_grades_exam", "s2_publish_ds", "s2_publish_exam", "sem1Deliberation", "sem2Deliberation", "updatedAt", "updatedBy") SELECT "createdAt", "deliberationFinale", "dsAffichage", "dsRemise", "end_year", "examAffichage", "examRemise", "id", "s1_delib", "s1_ds", "s1_exam", "s1_grades_ds", "s1_grades_exam", "s1_publish_ds", "s1_publish_exam", "s2_delib", "s2_ds", "s2_exam", "s2_grades_ds", "s2_grades_exam", "s2_publish_ds", "s2_publish_exam", "sem1Deliberation", "sem2Deliberation", "updatedAt", "updatedBy" FROM "AcademicCalendarConfig";
+INSERT INTO "new_AcademicCalendarConfig" ("createdAt",  "end_year", "id", "s1_delib", "s1_ds", "s1_exam", "s1_grades_ds", "s1_grades_exam", "s1_publish_ds", "s1_publish_exam", "s2_delib", "s2_ds", "s2_exam", "s2_grades_ds", "s2_grades_exam", "s2_publish_ds", "s2_publish_exam",  "updatedAt", "updatedBy") SELECT "createdAt",  "end_year", "id", "s1_delib", "s1_ds", "s1_exam", "s1_grades_ds", "s1_grades_exam", "s1_publish_ds", "s1_publish_exam", "s2_delib", "s2_ds", "s2_exam", "s2_grades_ds", "s2_grades_exam", "s2_publish_ds", "s2_publish_exam", "updatedAt", "updatedBy" FROM "AcademicCalendarConfig";
 DROP TABLE "AcademicCalendarConfig";
 ALTER TABLE "new_AcademicCalendarConfig" RENAME TO "AcademicCalendarConfig";
 CREATE TABLE "new_GradeSubmission" (

@@ -1,12 +1,5 @@
 export class AcademicCalendarConfig {
   id!: number;
-  dsRemise!: string;
-  examRemise!: string;
-  dsAffichage!: string;
-  examAffichage!: string;
-  sem1Deliberation!: string;
-  sem2Deliberation!: string;
-  deliberationFinale!: string;
   s1_ds?: string | null;
   s1_exam?: string | null;
   s1_grades_ds?: string | null;

@@ -32,7 +32,7 @@ export class WebhookService {
   const body = JSON.stringify(payload);
 
   const signature = crypto
-    .createHmac('sha256', this.webhookSecret!)  // ← ajoute ! pour dire à TS "je sais qu'il est non-null ici"
+    .createHmac('sha256', this.webhookSecret!) 
     .update(body)
     .digest('hex');
 

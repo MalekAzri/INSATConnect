@@ -1,28 +1,7 @@
 import { IsDateString, IsOptional } from 'class-validator';
 
 export class SetDatesDto {
-  // ── Legacy (rétrocompatibilité) ─────────────────────────────────────────────
-  @IsDateString() @IsOptional()
-  dsRemise?: string;
-
-  @IsDateString() @IsOptional()
-  examRemise?: string;
-
-  @IsDateString() @IsOptional()
-  dsAffichage?: string;
-
-  @IsDateString() @IsOptional()
-  examAffichage?: string;
-
-  @IsDateString() @IsOptional()
-  sem1Deliberation?: string;
-
-  @IsDateString() @IsOptional()
-  sem2Deliberation?: string;
-
-  @IsDateString() @IsOptional()
-  DeliberationFinale?: string;
-
+ 
   // ── Semestre 1 ──────────────────────────────────────────────────────────────
   @IsDateString() @IsOptional()
   s1_ds?: string;
