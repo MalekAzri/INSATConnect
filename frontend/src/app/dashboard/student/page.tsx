@@ -36,6 +36,7 @@ import {
   SendHorizontal
 } from "lucide-react";
 
+
 // Types
 interface PublicationGradeLine {
   subject: string;
@@ -150,13 +151,13 @@ interface Room {
   profTitle: string;
   bgGradient: string;
   targetYear: string;
-  homework?: {
-    id: string;
-    title: string;
-    description: string;
-    deadline: string;
-    submitted: boolean;
-  };
+homeworks: {
+  id: string;
+  title: string;
+  description: string;
+  deadline: string;
+  submitted: boolean;
+}[];
   posts: RoomPost[];
 }
 
@@ -195,7 +196,7 @@ const mapAcademicEventsToCalendarEvents = (events: GraphqlAcademicEvent[]): Cale
 
 export default function StudentDashboard() {
   const router = useRouter();
-  const { user, logout, updateYear } = useUser();
+  const { user, logout } = useUser();
   const [activeTab, setActiveTab] = useState<"feed" | "chat" | "rooms" | "calendar">("feed");
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [backendCalendarEvents, setBackendCalendarEvents] = useState<CalendarEvent[]>([]);
@@ -217,7 +218,7 @@ export default function StudentDashboard() {
   const [roomsReloadToken, setRoomsReloadToken] = useState(0);
   
   // Chat States - connected to real backend
-  const ADMIN_USER_ID = 1; // admin user ID as set by the DB seed
+  const ADMIN_USER_ID = 1; // admin user ID as set by the DB seed is always 1 ( un seul compte admin est supposé existant)
   const { messages: chatMessages, sendMessage: sendChatMessage, isConnected: isChatConnected, isLoading: isChatLoading, fetchConversation } = useChat({
     userId: user.id,
     otherUserId: ADMIN_USER_ID,
@@ -399,12 +400,14 @@ export default function StudentDashboard() {
     source.addEventListener('publication.created', handleSseEvent);
     source.addEventListener('grades.published', handleSseEvent);
     source.addEventListener('deadline_alert', handleDeadlineAlert);
+    source.addEventListener('room.new.homework', handleSseEvent);
 
     return () => {
       source.removeEventListener('message', handleSseEvent);
       source.removeEventListener('publication.created', handleSseEvent);
       source.removeEventListener('grades.published', handleSseEvent);
       source.removeEventListener('deadline_alert', handleDeadlineAlert);
+      source.removeEventListener('room.new.homework', handleSseEvent); 
       source.close();
     };
   }, [user.year, loadFeed]);
@@ -467,17 +470,13 @@ export default function StudentDashboard() {
           profTitle: "Enseignant",
           bgGradient: getRoomGradient(r.id),
           targetYear: r.targetYear,
-          homework: r.homeworks?.length > 0 ? {
-            id: r.homeworks[0].id,
-            title: r.homeworks[0].title,
-            description: r.homeworks[0].description,
-            deadline: typeof r.homeworks[0].deadline === "string"
-              ? r.homeworks[0].deadline.slice(0, 10)
-              : r.homeworks[0].deadline,
-            submitted: (r.homeworks[0].submissions ?? []).some(
-              (s: any) => s.studentName === (user.name || "")
-            ),
-          } : undefined,
+         homeworks: (r.homeworks ?? []).map((h: any) => ({
+  id: h.id,
+  title: h.title,
+  description: h.description,
+  deadline: typeof h.deadline === "string" ? h.deadline.slice(0, 10) : h.deadline,
+  submitted: (h.submissions ?? []).some((s: any) => s.studentName === (user.name || "")),
+})),
           posts: (r.posts ?? []).map((p: any) => ({
             id: p.id,
             author: p.author || teacherLabel,
@@ -512,6 +511,7 @@ export default function StudentDashboard() {
   }, [activeTab, user.name, user.year, roomsReloadToken]);
 
   // Active rooms based on student's year selection (case-insensitive)
+  console.log("user.year:", user.year);
   const normalizedStudentYear = (user.year || "GL3").trim().toUpperCase();
   const activeRooms = roomsState.filter(
     room => room.targetYear.trim().toUpperCase() === normalizedStudentYear
@@ -561,38 +561,43 @@ export default function StudentDashboard() {
     }
   };
 
-  const handleHomeworkSubmit = async (roomId: string) => {
-    const room = roomsState.find(r => r.id === roomId);
-    if (!room?.homework) return;
-    if (!homeworkFile) {
-      showToast("Sélectionnez un fichier avant de soumettre.");
-      return;
-    }
+  const handleHomeworkSubmit = async (roomId: string, homeworkId: string) => {
+  const hw = roomsState
+    .find(r => r.id === roomId)
+    ?.homeworks.find(h => h.id === homeworkId);
+  if (!hw) return;
+  if (!homeworkFile) {
+    showToast("Sélectionnez un fichier avant de soumettre.");
+    return;
+  }
 
-    try {
-      const formData = new FormData();
-      formData.append("studentName", user.name || "Étudiant");
-      formData.append("file", homeworkFile);
+  try {
+    const formData = new FormData();
+    formData.append("studentName", user.name || "Étudiant");
+    formData.append("file", homeworkFile);
 
-      await backendFetchJson(`/teacher/homeworks/${room.homework.id}/submit`, {
-        method: "POST",
-        body: formData,
-      });
+    await backendFetchJson(`/teacher/homeworks/${homeworkId}/submit`, {
+      method: "POST",
+      body: formData,
+    });
 
-      setHomeworkStatus(prev => ({ ...prev, [roomId]: true }));
-      setRoomsState(prev => prev.map(r => {
-        if (r.id === roomId && r.homework) {
-          return { ...r, homework: { ...r.homework, submitted: true } };
-        }
-        return r;
-      }));
+    setHomeworkStatus(prev => ({ ...prev, [homeworkId]: true }));
+    setRoomsState(prev => prev.map(r => {
+      if (r.id !== roomId) return r;
+      return {
+        ...r,
+        homeworks: r.homeworks.map(h =>
+          h.id === homeworkId ? { ...h, submitted: true } : h
+        ),
+      };
+    }));
 
-      setHomeworkFile(null);
-      showToast("Votre devoir a été transmis à l'enseignant avec succès !");
-    } catch {
-      showToast("Impossible de soumettre le devoir.");
-    }
-  };
+    setHomeworkFile(null);
+    showToast("Votre devoir a été transmis à l'enseignant avec succès !");
+  } catch {
+    showToast("Impossible de soumettre le devoir.");
+  }
+};
 
   // Chat message send - connected to real backend
   const handleSendMessage = (e: React.FormEvent) => {
@@ -603,8 +608,11 @@ export default function StudentDashboard() {
   };
 
   // Check how many homeworks are active and unsubmitted to notify user
-  const unsubmittedHomeworks = activeRooms.filter(r => r.homework && !r.homework.submitted && !homeworkStatus[r.id]);
-
+const unsubmittedHomeworks = activeRooms.flatMap(r =>
+  r.homeworks
+    .filter(h => !h.submitted && !homeworkStatus[h.id])
+    .map(h => ({ roomId: r.id, roomName: r.name, homework: h }))
+);
   return (
     <div className="flex h-screen overflow-hidden bg-[#F9FBFC] text-slate-800">
       
@@ -643,22 +651,12 @@ export default function StudentDashboard() {
               </div>
             </div>
           </div>
-          <div className="pt-2 border-t border-slate-100/60">
-            <label className="text-[9px] font-black uppercase tracking-wider text-slate-400 block mb-1">Classe / Filière</label>
-            <select
-              value={user.year || "GL3"}
-              onChange={(e) => {
-                updateYear(e.target.value);
-                showToast(`Filière mise à jour : ${e.target.value}`);
-                setSelectedRoomId(null);
-              }}
-              className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-blue-500 cursor-pointer shadow-sm"
-            >
-              {["MPI", "GL2", "GL3", "GL4", "IIA", "IMI"].map((yr) => (
-                <option key={yr} value={yr}>{yr}</option>
-              ))}
-            </select>
+       <div className="pt-2 border-t border-slate-100/60">
+          <label className="text-[9px] font-black uppercase tracking-wider text-slate-400 block mb-1">Classe / Filière</label>
+          <div className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700">
+            {user.year || "—"}
           </div>
+        </div>
         </div>
 
         {/* Navigation Items */}
@@ -817,19 +815,19 @@ export default function StudentDashboard() {
 
                 <h4 className="text-xs font-extrabold text-slate-800 pb-2 border-b border-slate-50">Rappels de travaux</h4>
                 <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
-                  {unsubmittedHomeworks.length > 0 ? (
-                    unsubmittedHomeworks.map(r => (
-                      <div key={r.id} className="p-2 bg-orange-50/50 border border-orange-100 rounded-xl flex gap-2">
-                        <AlertTriangle className="h-4 w-4 text-orange-500 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-[10px] font-bold text-slate-800">{r.homework?.title}</p>
-                          <p className="text-[9px] text-orange-600 font-semibold">{r.homework?.deadline}</p>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="p-4 text-center text-slate-400 text-[10px] font-semibold">
-                      Aucun devoir urgent en attente. Félicitations !
+                 {unsubmittedHomeworks.length > 0 ? (
+  unsubmittedHomeworks.map((item, idx) => (
+    <div key={idx} className="p-2 bg-orange-50/50 border border-orange-100 rounded-xl flex gap-2">
+      <AlertTriangle className="h-4 w-4 text-orange-500 shrink-0 mt-0.5" />
+      <div>
+        <p className="text-[10px] font-bold text-slate-800">{item.homework.title}</p>
+        <p className="text-[9px] text-orange-600 font-semibold">{item.homework.deadline}</p>
+      </div>
+    </div>
+  ))
+) : (
+  <div className="p-4 text-center text-slate-400 text-[10px] font-semibold">
+    Aucun devoir urgent en attente. Félicitations !
                     </div>
                   )}
                 </div>
@@ -861,9 +859,9 @@ export default function StudentDashboard() {
                   <Sparkles className="h-5 w-5 text-blue-600 shrink-0 mt-0.5 animate-pulse" />
                   <div>
                     <h4 className="text-xs font-bold text-blue-900">Affichage Ciblé Activé : {user.year}</h4>
-                    <p className="text-[11px] text-blue-700 font-semibold mt-0.5">
-                      Ce flux est synchronisé avec votre filière universitaire. Si vous changez de classe dans le sélecteur de la barre latérale, les relevés de notes et calendriers s'adapteront instantanément.
-                    </p>
+<p className="text-[11px] text-blue-700 font-semibold mt-0.5">
+  Ce flux est synchronisé avec votre filière universitaire ({user.year}).
+</p>
                   </div>
                 </div>
 
@@ -1249,78 +1247,77 @@ export default function StudentDashboard() {
                       <div className="space-y-6">
                         <div className="text-xs font-bold text-slate-400">Travail à remettre</div>
                         
-                        {selectedRoom?.homework ? (
-                          <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-4">
-                            <div className="flex items-center justify-between">
-                              <span className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-600 text-[9px] font-extrabold uppercase">
-                                Devoir Exigé
-                              </span>
-                              <span className="text-[9px] text-slate-400 font-semibold flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                <span>Remise</span>
-                              </span>
-                            </div>
+                        {(selectedRoom?.homeworks?.length ?? 0) > 0 ? (
+  selectedRoom!.homeworks.map(hw => (
+    <div key={hw.id} className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-4">
+      <div className="flex items-center justify-between">
+        <span className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-600 text-[9px] font-extrabold uppercase">
+          Devoir Exigé
+        </span>
+        <span className="text-[9px] text-slate-400 font-semibold flex items-center gap-1">
+          <Clock className="h-3 w-3" />
+          <span>Remise</span>
+        </span>
+      </div>
 
-                            <h4 className="text-xs font-extrabold text-slate-800">{selectedRoom.homework.title}</h4>
-                            <p className="text-[10px] text-slate-500 font-semibold leading-relaxed">
-                              {selectedRoom.homework.description}
-                            </p>
+      <h4 className="text-xs font-extrabold text-slate-800">{hw.title}</h4>
+      <p className="text-[10px] text-slate-500 font-semibold leading-relaxed">{hw.description}</p>
 
-                            <div className="pt-2 border-t border-slate-50 space-y-3">
-                              <div className="text-[10px] font-bold text-slate-600">Statut de la remise :</div>
-                              
-                              {/* Submit Switch representation */}
-                              {selectedRoom.homework.submitted || homeworkStatus[selectedRoom.id] ? (
-                                <div className="p-3 bg-teal-50 border border-teal-100 rounded-2xl flex items-center gap-2.5 text-teal-800">
-                                  <CheckCircle2 className="h-5 w-5 text-teal-500 shrink-0" />
-                                  <div>
-                                    <div className="text-[10px] font-bold">Devoir Remis</div>
-                                    <div className="text-[9px] text-teal-600 font-semibold">Transmis avec succès</div>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="space-y-3.5">
-                                  <div className="p-3.5 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 hover:bg-slate-50 transition-colors relative flex flex-col items-center justify-center text-center cursor-pointer">
-                                    <input 
-                                      type="file" 
-                                      className="absolute inset-0 opacity-0 cursor-pointer" 
-                                      onChange={e => {
-                                        if (e.target.files && e.target.files[0]) {
-                                          setHomeworkFile(e.target.files[0]);
-                                        }
-                                      }}
-                                    />
-                                    <Upload className="h-6 w-6 text-slate-400 mb-2" />
-                                    <div className="text-[9px] font-bold text-slate-600">
-                                      {homeworkFile ? homeworkFile.name : "Sélectionner ou glisser le code source / PDF"}
-                                    </div>
-                                    <div className="text-[8px] text-slate-400 font-semibold mt-0.5">Fichiers autorisés : ZIP, PDF (Max. 10 Mo)</div>
-                                  </div>
+      <div className="pt-2 border-t border-slate-50 space-y-3">
+        <div className="text-[10px] font-bold text-slate-600">Statut de la remise :</div>
 
-                                  <button
-                                    onClick={() => handleHomeworkSubmit(selectedRoom.id)}
-                                    disabled={!homeworkFile}
-                                    className={`w-full py-2.5 rounded-2xl text-[10px] font-extrabold transition-all ${
-                                      homeworkFile
-                                        ? "bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/10 cursor-pointer"
-                                        : "bg-slate-100 text-slate-400 cursor-not-allowed"
-                                    }`}
-                                  >
-                                    {homeworkFile ? "Transmettre le Devoir" : "Sélectionner un fichier d'abord"}
-                                  </button>
-                                </div>
-                              )}
-                              
-                              <p className="text-[9px] text-red-500 font-semibold text-center mt-2 bg-red-50 py-1 rounded-md">
-                                Délai : {selectedRoom.homework.deadline}
-                              </p>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="p-6 bg-slate-50 rounded-3xl text-center text-slate-400 text-[10px] font-semibold border border-slate-100">
-                            Aucune tâche active pour ce cours.
-                          </div>
-                        )}
+        {hw.submitted || homeworkStatus[hw.id] ? (
+          <div className="p-3 bg-teal-50 border border-teal-100 rounded-2xl flex items-center gap-2.5 text-teal-800">
+            <CheckCircle2 className="h-5 w-5 text-teal-500 shrink-0" />
+            <div>
+              <div className="text-[10px] font-bold">Devoir Remis</div>
+              <div className="text-[9px] text-teal-600 font-semibold">Transmis avec succès</div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3.5">
+            <div className="p-3.5 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 hover:bg-slate-50 transition-colors relative flex flex-col items-center justify-center text-center cursor-pointer">
+              <input
+                type="file"
+                className="absolute inset-0 opacity-0 cursor-pointer"
+                onChange={e => {
+                  if (e.target.files && e.target.files[0]) {
+                    setHomeworkFile(e.target.files[0]);
+                  }
+                }}
+              />
+              <Upload className="h-6 w-6 text-slate-400 mb-2" />
+              <div className="text-[9px] font-bold text-slate-600">
+                {homeworkFile ? homeworkFile.name : "Sélectionner ou glisser le code source / PDF"}
+              </div>
+              <div className="text-[8px] text-slate-400 font-semibold mt-0.5">Fichiers autorisés : ZIP, PDF (Max. 10 Mo)</div>
+            </div>
+
+            <button
+              onClick={() => handleHomeworkSubmit(selectedRoom!.id, hw.id)}
+              disabled={!homeworkFile}
+              className={`w-full py-2.5 rounded-2xl text-[10px] font-extrabold transition-all ${
+                homeworkFile
+                  ? "bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/10 cursor-pointer"
+                  : "bg-slate-100 text-slate-400 cursor-not-allowed"
+              }`}
+            >
+              {homeworkFile ? "Transmettre le Devoir" : "Sélectionner un fichier d'abord"}
+            </button>
+          </div>
+        )}
+
+        <p className="text-[9px] text-red-500 font-semibold text-center mt-2 bg-red-50 py-1 rounded-md">
+          Délai : {hw.deadline}
+        </p>
+      </div>
+    </div>
+  ))
+) : (
+  <div className="p-6 bg-slate-50 rounded-3xl text-center text-slate-400 text-[10px] font-semibold border border-slate-100">
+    Aucune tâche active pour ce cours.
+  </div>
+)}
 
                       </div>
 

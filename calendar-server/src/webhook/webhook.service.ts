@@ -27,15 +27,15 @@ export class WebhookService {
     date: string;
     daysLeft: number;
   }): Promise<void> {
-  if (!this.webhookUrl || !this.webhookSecret) return; // ← guard existante
+  if (!this.webhookUrl || !this.webhookSecret) return; // ← guard existante on arrete l'execution si les variables d'environnement ne sont pas configurées par securité
 
   const body = JSON.stringify(payload);
-
+//creer une signature crypto, pour que le serveur recepteur sache qu'il s'agit bien d'une requete legitime venant de notre serveur et pas d'un attaquant qui essaierait de faire du spoofing
   const signature = crypto
     .createHmac('sha256', this.webhookSecret!) 
     .update(body)
     .digest('hex');
-
+//envoyer la requete POST au serveur recepteur avec le payload et la signature dans les headers
   await axios.post(this.webhookUrl, body, {
     headers: {
       'Content-Type': 'application/json',
