@@ -61,7 +61,7 @@ export class CheckerService {
     private readonly config: ConfigService,
   ) {}
 
-  @Cron('* * * * *') // 6h UTC = 7h Tunis 
+  @Cron('0 6 * * *') // 6h UTC = 7h Tunis 
   async checkDeadlines(): Promise<void> {
     this.logger.log('Vérification des échéances...');
 
