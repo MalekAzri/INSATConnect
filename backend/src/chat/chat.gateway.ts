@@ -17,7 +17,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   server!: Server;
 
   private readonly logger = new Logger(ChatGateway.name);
-  private userSockets = new Map<number, string>();
+  private userSockets = new Map<number, string>();// Map<userId, socketId>
 
   constructor(private readonly messagesService: MessagesService) {}
 
@@ -46,12 +46,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(`User ${numId} registered with socket ${socketId}`);
     this.userSockets.set(numId, socketId);
 
-    void this.deliverPendingMessages(numId, socketId);
+    void this.deliverPendingMessages(numId, socketId);//dès qu'il se reconnecte, on lui livre les messages en attente qui n'ont pas pu lui être délivrés en temps réel pendant son absence
   }
 
   @SubscribeMessage('sendMessage')
   async handleSendMessage(
-    @MessageBody()
+    @MessageBody()//ce que le front envoie
     payload: {
       senderId: number;
       receiverId: number;
@@ -64,12 +64,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const senderSocketId = this.userSockets.get(senderId);
 
     try {
-      const savedMessage = await this.messagesService.createMessage({
+      const savedMessage = await this.messagesService.createMessage({//stocker le msg en base 
         senderId,
         receiverId,
         content: payload.content,
       });
-
+//preparer le msg à emettre (clientTempId est utilisé pour que le front puisse faire le lien entre le message optimiste et le message réel une fois qu'il reçoit la confirmation du backend)
       const emittedMessage = {
         ...savedMessage,
         clientTempId: payload.clientTempId,
@@ -95,7 +95,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.server.to(senderSocketId).emit('chatError', {
           message,
           clientTempId: payload.clientTempId,
-        });
+        });//front supprime le msg optimiste et affiche erreur
       }
     }
   }
@@ -106,9 +106,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ): Promise<void> {
     try {
       const pendingMessages =
-        await this.messagesService.getPendingMessagesForReceiver(userId);
+        await this.messagesService.getPendingMessagesForReceiver(userId);//les messages non livrés de cet userid
       if (!pendingMessages.length) return;
-
       for (const pending of pendingMessages) {
         this.server.to(socketId).emit('newMessage', pending);
       }
