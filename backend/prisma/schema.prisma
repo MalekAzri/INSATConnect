@@ -9,7 +9,6 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL")
 }
 
 
@@ -34,4 +33,41 @@ model Message {
   receiverId Int
   receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
   createdAt  DateTime @default(now())
+}
+
+model Document {
+  id          Int     @id @default(autoincrement())
+  title       String
+  category    String
+  content     String
+  fileName    String?
+  fileSize    String?
+  publishedAt String
+}
+
+model Timetable {
+  id           Int     @id @default(autoincrement())
+  title        String
+  targetYear   String
+  fileName     String?
+  fileSize     String?
+  publishedAt  String
+  scheduleJson String
+}
+
+model Grade {
+  id          Int    @id @default(autoincrement())
+  title       String
+  targetYear  String
+  publishedAt String
+  gradesJson  String
+}
+
+model AcademicDate {
+  id               Int      @id @default(autoincrement())
+  key              String   @unique
+  date             String
+  targetRole       String
+  notificationSent Boolean  @default(false)
+  updatedAt        DateTime @updatedAt
 }

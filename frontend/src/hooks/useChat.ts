@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 
-const BACKEND_URL = "http://localhost:3000";
+const BACKEND_URL = "http://localhost:3003";
 
 export interface BackendMessage {
   id: number;

@@ -7,6 +7,7 @@ async function bootstrap() {
     origin: true,
     credentials: true,
   });
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(process.env.PORT ?? 3003);
+  console.log(` Backend NestJS running on port ${process.env.PORT ?? 3003}`);
 }
 bootstrap();
