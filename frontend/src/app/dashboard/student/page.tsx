@@ -798,9 +798,19 @@ export default function StudentDashboard() {
                 {ongletActif === "rooms" && (idSalleSelectionnee ? salleSelectionnee?.name : "Salles d'Étude")}
                 {ongletActif === "calendar" && "Calendrier Général des DS & Examens"}
               </span>
-              <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md">
-                {user.year}
-              </span>
+              <select
+                value={user.year || "GL3"}
+                onChange={(e) => {
+                  updateYear(e.target.value);
+                  showToast(`Filière mise à jour : ${e.target.value}`);
+                  setIdSalleSelectionnee(null);
+                }}
+                className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md border-none cursor-pointer focus:outline-none font-bold"
+              >
+                {["MPI", "GL2", "GL3", "GL4", "IIA", "IMI"].map((yr) => (
+                  <option key={yr} value={yr}>{yr}</option>
+                ))}
+              </select>
             </h1>
           </div>
 
