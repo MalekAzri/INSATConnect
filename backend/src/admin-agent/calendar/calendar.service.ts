@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { PrismaService } from '../../prisma/prisma.service';
 import {
   PatchAcademicCalendarDto,
   UpsertAcademicCalendarDto,
@@ -11,28 +10,57 @@ import { CalendarSyncService } from './calendar-sync.service';
 @Injectable()
 export class CalendarService {
   constructor(
-    @InjectRepository(AcademicCalendarConfig)
-    private readonly calendarRepo: Repository<AcademicCalendarConfig>,
+    private readonly prisma: PrismaService,
     private readonly calendarSyncService: CalendarSyncService,
   ) {}
 
   async getConfig(): Promise<AcademicCalendarConfig | null> {
-    return this.calendarRepo.findOne({
-      where: {},
-      order: { updatedAt: 'DESC' },
+    return this.prisma.academicCalendarConfig.findFirst({
+      orderBy: { updatedAt: 'desc' },
     });
   }
 
   async upsertConfig(dto: UpsertAcademicCalendarDto, syncCalendar = true) {
     const current = await this.getConfig();
+    let saved: AcademicCalendarConfig;
 
-    const config = this.calendarRepo.create({
-      ...(current ?? {}),
-      ...dto,
+    const data = {
+      dsRemise: dto.dsRemise,
+      examRemise: dto.examRemise,
+      dsAffichage: dto.dsAffichage,
+      examAffichage: dto.examAffichage,
+      sem1Deliberation: dto.sem1Deliberation,
+      sem2Deliberation: dto.sem2Deliberation,
+      deliberationFinale: dto.deliberationFinale,
+      s1_ds: dto.s1_ds ?? null,
+      s1_exam: dto.s1_exam ?? null,
+      s1_grades_ds: dto.s1_grades_ds ?? null,
+      s1_publish_ds: dto.s1_publish_ds ?? null,
+      s1_grades_exam: dto.s1_grades_exam ?? null,
+      s1_publish_exam: dto.s1_publish_exam ?? null,
+      s1_delib: dto.s1_delib ?? null,
+      s2_ds: dto.s2_ds ?? null,
+      s2_exam: dto.s2_exam ?? null,
+      s2_grades_ds: dto.s2_grades_ds ?? null,
+      s2_publish_ds: dto.s2_publish_ds ?? null,
+      s2_grades_exam: dto.s2_grades_exam ?? null,
+      s2_publish_exam: dto.s2_publish_exam ?? null,
+      s2_delib: dto.s2_delib ?? null,
+      end_year: dto.end_year ?? null,
       updatedBy: dto.updatedBy?.trim() || current?.updatedBy || 'Agent admin',
-    });
+    };
 
-    const saved = await this.calendarRepo.save(config);
+    if (current) {
+      saved = await this.prisma.academicCalendarConfig.update({
+        where: { id: current.id },
+        data,
+      });
+    } else {
+      saved = await this.prisma.academicCalendarConfig.create({
+        data,
+      });
+    }
+
     const sync = await this.trySync(saved, syncCalendar);
 
     return { config: saved, sync };
@@ -46,16 +74,21 @@ export class CalendarService {
       );
     }
 
+    const data: any = {};
     if (dto.updatedBy !== undefined) {
-      current.updatedBy = dto.updatedBy?.trim() || 'Agent admin';
+      data.updatedBy = dto.updatedBy?.trim() || 'Agent admin';
     }
 
     for (const [key, value] of Object.entries(dto)) {
       if (key === 'updatedBy' || value === undefined) continue;
-      (current as unknown as Record<string, unknown>)[key] = value;
+      data[key] = value;
     }
 
-    const saved = await this.calendarRepo.save(current);
+    const saved = await this.prisma.academicCalendarConfig.update({
+      where: { id: current.id },
+      data,
+    });
+
     const sync = await this.trySync(saved, syncCalendar);
 
     return { config: saved, sync };

@@ -1,12 +1,11 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { PrismaModule } from '../../prisma/prisma.module';
 import { CalendarController } from './calendar.controller';
 import { CalendarService } from './calendar.service';
-import { AcademicCalendarConfig } from './entities/academic-calendar.entity';
 import { CalendarSyncService } from './calendar-sync.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([AcademicCalendarConfig])],
+  imports: [PrismaModule],
   controllers: [CalendarController],
   providers: [CalendarService, CalendarSyncService],
   exports: [CalendarService],
