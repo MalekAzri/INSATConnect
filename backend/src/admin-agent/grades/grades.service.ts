@@ -22,6 +22,7 @@ export class GradesService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
+<<<<<<< Updated upstream
   private mapGradeSubmission(sub: any): GradeSubmission {
     return {
       id: sub.id,
@@ -55,13 +56,38 @@ export class GradesService {
         entries: JSON.stringify(dto.entries),
         status: GradeSubmissionStatus.PENDING,
       },
+=======
+  async createSubmission(
+    dto: CreateGradeSubmissionDto,
+  ): Promise<GradeSubmission> {
+    const submission = this.gradeSubmissionsRepo.create({
+      teacherName: dto.teacherName.trim(),
+      teacherEmail: dto.teacherEmail?.trim() || null,
+      targetYear: dto.targetYear.trim().toUpperCase(),
+      semester: dto.semester?.trim() || null,
+      title: dto.title.trim(),
+      summary: dto.summary?.trim() || null,
+      entries: dto.entries,
+      status: GradeSubmissionStatus.PENDING,
+>>>>>>> Stashed changes
     });
 
     return this.mapGradeSubmission(submission);
   }
 
+<<<<<<< Updated upstream
   async listSubmissions(query: ListGradeSubmissionsQueryDto): Promise<GradeSubmission[]> {
     const where: any = {};
+=======
+  async listSubmissions(
+    query: ListGradeSubmissionsQueryDto,
+  ): Promise<GradeSubmission[]> {
+    const qb = this.gradeSubmissionsRepo
+      .createQueryBuilder('submission')
+      .orderBy('submission.createdAt', 'DESC')
+      .skip(query.offset ?? 0)
+      .take(query.limit ?? 50);
+>>>>>>> Stashed changes
 
     if (query.status) {
       where.status = query.status;
@@ -82,7 +108,13 @@ export class GradesService {
   }
 
   async getSubmission(id: string): Promise<GradeSubmission> {
+<<<<<<< Updated upstream
     const submission = await this.prisma.gradeSubmission.findUnique({ where: { id } });
+=======
+    const submission = await this.gradeSubmissionsRepo.findOne({
+      where: { id },
+    });
+>>>>>>> Stashed changes
     if (!submission) {
       throw new NotFoundException(`Soumission de notes ${id} introuvable`);
     }
@@ -116,10 +148,19 @@ export class GradesService {
   async publishValidatedGrades(dto: PublishGradesDto) {
     const targetYear = dto.targetYear.trim().toUpperCase();
 
+<<<<<<< Updated upstream
     const where: any = {
       status: GradeSubmissionStatus.VALIDATED,
       targetYear: { equals: targetYear },
     };
+=======
+    const qb = this.gradeSubmissionsRepo
+      .createQueryBuilder('submission')
+      .where('submission.status = :status', {
+        status: GradeSubmissionStatus.VALIDATED,
+      })
+      .andWhere('UPPER(submission.targetYear) = :targetYear', { targetYear });
+>>>>>>> Stashed changes
 
     if (dto.submissionIds?.length) {
       where.id = { in: dto.submissionIds };

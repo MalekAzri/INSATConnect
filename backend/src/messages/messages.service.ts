@@ -58,7 +58,13 @@ export class MessagesService {
       },
     });
 
-    const conversations = new Map<number, any>();
+    const conversations = new Map<
+      number,
+      {
+        user: { id: number; name: string; role: string };
+        lastMessage: (typeof messages)[0];
+      }
+    >();
 
     for (const msg of messages) {
       const otherUser = msg.senderId === userId ? msg.receiver : msg.sender;

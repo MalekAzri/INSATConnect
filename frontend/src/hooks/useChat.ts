@@ -31,6 +31,30 @@ export function useChat({ userId, otherUserId }: UseChatOptions) {
   const [isLoading, setIsLoading] = useState(false);
   const socketRef = useRef<Socket | null>(null);
 
+  const fetchConversation = useCallback(async (user1Id: number, user2Id: number) => {
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/messages/conversation/${user1Id}/${user2Id}`);
+      const data = await res.json();
+      setMessages(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Erreur chargement conversation:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const fetchConversationsList = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/messages/list/${userId}`);
+      const data = await res.json();
+      setConversations(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Erreur chargement liste conversations:", err);
+    }
+  }, [userId]);
+
   // Connect socket and register user
   useEffect(() => {
     if (!userId) return;
@@ -63,39 +87,14 @@ export function useChat({ userId, otherUserId }: UseChatOptions) {
       socket.disconnect();
       socketRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [userId, fetchConversationsList]);
 
   // Load conversation history when otherUserId changes
   useEffect(() => {
     if (userId && otherUserId) {
       fetchConversation(userId, otherUserId);
     }
-  }, [userId, otherUserId]);
-
-  const fetchConversation = useCallback(async (user1Id: number, user2Id: number) => {
-    setIsLoading(true);
-    try {
-      const res = await fetch(`${BACKEND_URL}/messages/conversation/${user1Id}/${user2Id}`);
-      const data = await res.json();
-      setMessages(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error("Erreur chargement conversation:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const fetchConversationsList = useCallback(async () => {
-    if (!userId) return;
-    try {
-      const res = await fetch(`${BACKEND_URL}/messages/list/${userId}`);
-      const data = await res.json();
-      setConversations(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error("Erreur chargement liste conversations:", err);
-    }
-  }, [userId]);
+  }, [userId, otherUserId, fetchConversation]);
 
   const sendMessage = useCallback(
     async (receiverId: number, content: string) => {

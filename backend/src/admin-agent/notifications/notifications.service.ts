@@ -56,7 +56,10 @@ export class NotificationsService {
     subscriberYear?: string,
   ): boolean {
     if (subscriberRole !== NotificationRole.ALL) {
-      if (event.role !== NotificationRole.ALL && event.role !== subscriberRole) {
+      if (
+        event.role !== NotificationRole.ALL &&
+        event.role !== subscriberRole
+      ) {
         return false;
       }
     }

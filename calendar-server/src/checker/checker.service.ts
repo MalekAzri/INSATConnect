@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -32,16 +32,18 @@ export class CheckerService {
       const deadline = new Date(entry.date);
       deadline.setHours(0, 0, 0, 0);
 
-      const diffMs   = deadline.getTime() - today.getTime();
+      const diffMs = deadline.getTime() - today.getTime();
       const daysLeft = Math.round(diffMs / (1000 * 60 * 60 * 24));
 
       if (daysLeft <= alertDays && daysLeft >= 0) {
-        this.logger.warn(` Échéance proche : ${entry.key} dans ${daysLeft} jour(s)`);
+        this.logger.warn(
+          ` Échéance proche : ${entry.key} dans ${daysLeft} jour(s)`,
+        );
 
         await this.webhookService.sendAlert({
-          type:       entry.key,
+          type: entry.key,
           targetRole: entry.targetRole,
-          date:       entry.date,
+          date: entry.date,
           daysLeft,
         });
 

@@ -5,10 +5,7 @@ import { WebhookModule } from '../webhook/webhook.module';
 import { CheckerService } from './checker.service';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([AcademicDate]),
-    WebhookModule,
-  ],
+  imports: [TypeOrmModule.forFeature([AcademicDate]), WebhookModule],
   providers: [CheckerService],
 })
 export class CheckerModule {}

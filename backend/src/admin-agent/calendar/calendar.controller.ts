@@ -19,7 +19,10 @@ export class CalendarController {
     @Body() dto: UpsertAcademicCalendarDto,
     @Query('syncCalendar') syncCalendar?: string,
   ) {
-    return this.calendarService.upsertConfig(dto, this.toBool(syncCalendar, true));
+    return this.calendarService.upsertConfig(
+      dto,
+      this.toBool(syncCalendar, true),
+    );
   }
 
   @Patch()
@@ -27,7 +30,10 @@ export class CalendarController {
     @Body() dto: PatchAcademicCalendarDto,
     @Query('syncCalendar') syncCalendar?: string,
   ) {
-    return this.calendarService.patchConfig(dto, this.toBool(syncCalendar, true));
+    return this.calendarService.patchConfig(
+      dto,
+      this.toBool(syncCalendar, true),
+    );
   }
 
   @Post('sync')

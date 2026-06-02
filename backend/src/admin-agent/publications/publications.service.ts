@@ -70,7 +70,13 @@ export class PublicationsService {
     const where: any = {};
 
     if (query.category) {
+<<<<<<< Updated upstream
       where.category = query.category;
+=======
+      qb.andWhere('publication.category = :category', {
+        category: query.category,
+      });
+>>>>>>> Stashed changes
     }
 
     if (query.targetYear) {
@@ -81,6 +87,7 @@ export class PublicationsService {
     }
 
     if (query.search) {
+<<<<<<< Updated upstream
       const search = query.search.trim();
       where.AND = [
         ...(where.AND || []),
@@ -91,6 +98,14 @@ export class PublicationsService {
           ],
         },
       ];
+=======
+      qb.andWhere(
+        '(publication.title LIKE :search OR publication.content LIKE :search)',
+        {
+          search: `%${query.search.trim()}%`,
+        },
+      );
+>>>>>>> Stashed changes
     }
 
     const pubs = await this.prisma.publication.findMany({
@@ -127,7 +142,13 @@ export class PublicationsService {
       data.author = dto.author.trim() || 'Scolarité INSAT';
     }
     if (dto.targetYear !== undefined) {
+<<<<<<< Updated upstream
       data.targetYear = dto.targetYear ? dto.targetYear.trim().toUpperCase() : null;
+=======
+      publication.targetYear = dto.targetYear
+        ? dto.targetYear.trim().toUpperCase()
+        : null;
+>>>>>>> Stashed changes
     }
     if (dto.grades !== undefined) {
       data.grades = dto.grades?.length ? JSON.stringify(dto.grades) : null;

@@ -28,7 +28,8 @@ if (!existsSync(uploadsDir)) {
 const publicationUploadConfig = {
   storage: diskStorage({
     destination: (_req, _file, cb) => cb(null, uploadsDir),
-    filename: (_req, file, cb) => cb(null, `${randomUUID()}${extname(file.originalname)}`),
+    filename: (_req, file, cb) =>
+      cb(null, `${randomUUID()}${extname(file.originalname)}`),
   }),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 };
